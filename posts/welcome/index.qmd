@@ -1,0 +1,12 @@
+---
+title: "Welcome To My Blog"
+author: "Benjamin Robinson"
+date: "2024-01-15"
+categories: [news]
+---
+
+Welcome to my blog! I'm trying to give this Quarto thing a shot since my last experience with Blogdown left so much to be desired. Cheers to new experiences!
+
+![](IMG_3152.JPG)
+
+Sincerely, Your Captain Benjamin.

@@ -1,0 +1,192 @@
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(readr)
+library(magick)
+library(htm2txt)
+library(purrr)
+library(stringr)
+library(stringi)
+library(htm2txt)
+library(httr)
+library(utf8)
+library(janitor)
+library(DT)
+
+library(shiny)
+library(shinythemes)
+library(shinyWidgets)
+library(shinysky)
+
+source('scripts/helpers.R')
+source('scripts/getNFLMockDB.R')
+source('scripts/getNFLMockDraft.R')
+
+ui <- shinyUI(fluidPage(
+  theme = shinytheme('readable'),
+  tags$head(tags$link(rel = "shortcut icon",
+                      href = "gtm_logo_white.png")),
+  tags$head(tags$style('body {font-family: Tahoma;}')),
+  img(src = "gtm_logo_transparent.png", height="15%", width="15%"),
+  titlePanel("Grinding the Mocks Mock Draft Functionizer"),
+  helpText("A front end for NFL Mock Draft data scraping."),
+  sidebarPanel(
+    # selectInput(
+    #   inputId = 'sport',
+    #   label = 'Sport:',
+    #   choices = c("NFL", "NBA", "NHL", "MLB"),
+    #   selected = 'NFL'
+    # ),
+    selectInput(
+      inputId = 'function_type',
+      label = 'Function:',
+      choices = c("GTM", "MDDB"),
+      selected = 'GTM'
+    ),
+    selectInput(
+      inputId = 'draft_year',
+      label = 'Draft Year:',
+      choices = sort(date_xwalk$draft_year, decreasing = TRUE),
+      selected = max(date_xwalk$draft_year)
+    ),
+    textInput(inputId = 'url',
+              label = 'URL:'),
+    textInput(inputId = 'site',
+              label = 'Site:'),
+    textInput(inputId = 'author',
+              label = 'Author(s):'),
+    dateInput(
+      inputId = 'date',
+      label = 'Mock Draft Date',
+      value = NULL,
+      format = "mm/dd/yyyy"
+    ),
+    selectInput(
+      inputId = 'type',
+      label = 'Draftnik Type:',
+      choices = c("Fan", "Expert", "Media"),
+      selected = "Fan"
+    ),
+    uiOutput("draft_date"),
+    hr(),
+    h4("GTM Extras"),
+    checkboxInput(
+      inputId = 'rnd_clean',
+      label = strong('Clean Round Column:'),
+      value = TRUE
+    ),
+    numericInput(
+      inputId = 'n1',
+      label = 'First Page of a Listicle:',
+      value = 1
+    ),
+    numericInput(
+      inputId = 'n2',
+      label = 'Last Page of a Listicle:',
+      value = 1
+    ),
+    fluidRow(
+      column(
+        12,
+        tags$strong("Submit Selections:"),
+        br(),
+        tags$div(style = "margin-top: 5px"),
+        shiny::actionButton(
+          inputId = "action",
+          label = "Submit",
+          icon =  icon("football-ball"),
+          style = "background-color: cornflowerblue;color: white; width:150px"
+        ),
+        # shiny::actionButton(
+        #   inputId = "copy",
+        #   label = "Copy",
+        #   icon =  icon("copy"),
+        #   style = "background-color: cornflowerblue;color: white; width:150px"
+        # ),
+        br()
+      )
+    )
+  ),
+  mainPanel(DTOutput('mock_tbl'), busyIndicator(wait = 1000))
+))
+
+# Define server logic required to draw a histogram
+server <- shinyServer(function(input, output, session) {
+  renderUI({
+    req(input$draft_year)
+    selectInput(
+      inputId = 'draft_date',
+      label = "Draft Date:",
+      choices = date_xwalk$draft_date,
+      selected = date_xwalk$draft_date[date_xwalk$draft_year == input$draft_year]
+    )
+  }) -> output$draft_date
+  
+  eventReactive(input$action, {
+    if (input$function_type == 'GTM') {
+      getNFLMockDraft(
+        draft_year = input$draft_year,
+        url = input$url,
+        site = input$site,
+        author = input$author,
+        date = input$date,
+        type = input$type,
+        method = 'df',
+        draft_date = input$draft_date,
+        rnd_clean = input$rnd_clean,
+        n1 = input$n1,
+        n2 = input$n2
+      )
+        # mutate(across(contains("date"), ~ as.Date(., format = '%m/%d/%Y')))
+    } else {
+      getNFLMockDB(
+        draft_year = input$draft_year,
+        url = input$url,
+        site = input$site,
+        author = input$author,
+        date = input$date,
+        type = input$type,
+        method = 'df',
+        draft_date = input$draft_date
+      )
+        # mutate(across(contains("date"), ~ as.Date(., format = '%m/%d/%Y')))
+    }
+  }) -> mock_data
+  
+  # eventReactive(input$action, {
+  #   c(-1, round_xwalk %>%
+  #     filter(draft_year == input$draft_year) %>%
+  #     group_by(round) %>%
+  #     filter(pick == max(pick)) %>%
+  #     pull(pick)
+  #   )
+  # }) -> dt_length
+  
+  renderDT({
+    datatable(
+      mock_data(),
+      class = 'cell-border stripe',
+      rownames = FALSE,
+      extensions = c("Buttons"),
+      selection = 'none',
+      options = list(
+        select = TRUE,
+        dom = 'Bfrtip',
+        buttons = list(
+          list(
+            extend = "copy",
+            text = 'Copy',
+            title = NULL,
+            header = NULL
+          )
+        ),
+        # pageLength = -1,
+        lengthMenu = list(c(-1)),
+        scrollX = TRUE
+      )
+    )
+  }, server = FALSE) -> output$mock_tbl
+  
+})
+
+shinyApp(ui = ui, server = server)

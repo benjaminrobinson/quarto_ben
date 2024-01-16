@@ -1,0 +1,2247 @@
+data.frame(
+  draft_year = c(2018:2024),
+  draft_date = c(
+    '2018-04-26',
+    '2019-04-25',
+    '2020-04-23',
+    '2021-04-29',
+    '2022-04-28',
+    '2023-04-27',
+    '2024-04-25'
+  )
+) %>%
+  mutate(draft_date = as.Date(draft_date, format = '%Y-%m-%d')) -> date_xwalk
+
+remove_paren <- function(x, string = "") {
+  gsub(paste0("\\s*\\(", string, "[^\\)]+\\)"), "", x)
+}
+
+remove_end_paren <- function(x){
+  sub(" \\(", ", ", x) %>%
+    sub(")", "", .)
+}
+
+remove_semicolon <- function(x) {
+  gsub("[;]", ",", x)
+}
+
+remove_emdash <- function(x) {
+  gsub(" \\p{Pd}", ",", x, perl = TRUE)
+}
+
+remove_colon <- function(x) {
+  gsub("[:]", ",", x)
+}
+
+remove_period <- function(x) {
+  sub("[.]", ",", x)
+}
+
+remove_lowup <- function(x) {
+  gsub("(?<=([a-z]))(?=[A-Z]|[0-9]|\\()", ", ", x, perl = TRUE)
+}
+
+detect_str <- function(str, patt = "[0-9][.] ") {
+  str[grepl(patt, str)]
+}
+
+detect_chr <- function(str, n = 150) {
+  str[nchar(str) <= n]
+}
+
+df_plus_name <- function(x, nm = 'draft') {
+  x %>%
+    as.data.frame %>%
+    setNames(nm)
+}
+
+getText <- function(x) {
+  gettxt(x, 'ASCII') %>%
+    strsplit("\n") %>%
+    unlist %>%
+    str_squish %>%
+    .[. != ''] %>%
+    unique %>%
+    iconv("latin1", "ASCII", sub = "") %>%
+    sub("  ", ", ", .) %>%
+    str_squish %>%
+    gsub("’", "'", .)
+}
+
+split_picks <- function(x) {
+  paste(x, collapse = ', ') %>%
+    str_split("[0-9][0-9][0-9][.] ") %>%
+    unlist %>%
+    str_split("[0-9][0-9][.] ") %>%
+    unlist %>%
+    str_split("[0-9][.] ") %>%
+    unlist %>%
+    .[. != '']
+}
+
+df_separate <- function(x,
+                        nm = 'draft',
+                        sp = ', ',
+                        it = c('pick',
+                               'team',
+                               'name',
+                               'position',
+                               'school')) {
+  x %>%
+    as.data.frame %>%
+    setNames(nm) -> tmp
+  
+  separate(
+    data = tmp,
+    col = nm,
+    sep = sp,
+    into = it
+  )
+}
+
+detect_nbr <- function(str) {
+  str[substring(str, 0, 1) %in% 1:9]
+}
+
+# copy_clipboard <- function(x) {
+#   write.table(
+#     x,
+#     "clipboard-20000",
+#     sep = "\t",
+#     row.names = FALSE,
+#     col.names = FALSE
+#   )
+# }
+
+read_csv("data/Mock_Players.csv", col_types = cols()) -> mock_players
+
+read_csv("data/Draft_XWalk.csv", col_types = cols()) -> round_xwalk
+
+round_clean <- function(x, year = 2024) {
+  round_xwalk %>%
+    filter(draft_year == year) %>%
+    select(-draft_year) -> tmp
+  return(structure(tmp$round,
+                   names = tmp$pick)[x])
+}
+
+data.frame(
+  stringsAsFactors = FALSE,
+  team = c(
+    "Jacksonville Jaguars",
+    "Detroit Lions",
+    "Houston Texans",
+    "New York Jets",
+    "New York Giants",
+    "Carolina Panthers",
+    "Atlanta Falcons",
+    "Seattle Seahawks",
+    "New Orleans Saints",
+    "Philadelphia Eagles",
+    "Baltimore Ravens",
+    "Washington Commanders",
+    "Los Angeles Chargers",
+    "Tennessee Titans",
+    "Pittsburgh Steelers",
+    "Kansas City Chiefs",
+    "Green Bay Packers",
+    "Buffalo Bills",
+    "Dallas Cowboys",
+    "New England Patriots",
+    "Cincinnati Bengals",
+    "Minnesota Vikings",
+    "Tampa Bay Buccaneers",
+    "Chicago Bears",
+    "Indianapolis Colts",
+    "Arizona Cardinals",
+    "San Francisco 49ers",
+    "Denver Broncos",
+    "Cleveland Browns",
+    "Las Vegas Raiders",
+    "Miami Dolphins",
+    "Los Angeles Rams"
+  )
+) %>%
+  mutate(
+    location = case_when(
+      str_count(team, " ") == 1 ~ word(team, 1),
+      str_count(team, " ") == 2 &
+        word(team, 1) != 'Washington' ~ word(team, 1, 2),
+      TRUE ~ word(team, 1)
+    ),
+    location = case_when(
+      team == "New York Jets" ~ "NY Jets",
+      team == "New York Giants" ~ "NY Giants",
+      team == "Los Angeles Chargers" ~ "LA Chargers",
+      team == "Los Angeles Rams" ~ "LA Rams",
+      TRUE ~ location
+    ),
+    mascot = case_when(
+      str_count(team, " ") == 1 ~ word(team, 2),
+      str_count(team, " ") == 2 &
+        word(team, 1) != 'Washington' ~ word(team, 3),
+      TRUE ~ word(team, 2, 3)
+    ),
+    team_name = team
+  ) %>%
+  left_join(
+    'https://en.wikipedia.org/wiki/Wikipedia:WikiProject_National_Football_League/National_Football_League_team_abbreviations' %>%
+      read_html %>%
+      html_table %>%
+      .[[1]] %>%
+      slice(-1) %>%
+      gather('team', 'abbr',-X1) %>%
+      select(-team) %>%
+      rename(team = X1) %>%
+      distinct %>%
+      add_row(team = 'Washington Commanders', abbr = 'WFT') %>%
+      mutate(
+        team = ifelse(team == 'Washington Football Team',
+                      'Washington Commanders',
+                      team)
+      ),
+    by = c('team')
+  ) %>%
+  gather(key, value, -team) %>%
+  select(-key) %>%
+  distinct %>%
+  add_row(team = 'Washington Commanders', value = 'Washington Redskins') %>%
+  add_row(team = 'Washington Commanders', value = 'Washington Football Team') %>%
+  add_row(team = 'Washington Commanders', value = 'Washington Washington') %>%
+  add_row(team = 'Washington Commanders', value = 'Football Team') %>%
+  add_row(team = 'Washington Commanders', value = 'Redskins') %>%
+  add_row(team = 'Washington Commanders', value = 'Was') %>%
+  add_row(team = 'Las Vegas Raiders', value = 'Oakland Raiders') %>%
+  add_row(team = 'Las Vegas Raiders', value = 'OAK') %>%
+  add_row(team = 'Las Vegas Raiders', value = 'LVR') %>%
+  add_row(team = 'Jacksonville Jaguars', value = 'Jags') %>%
+  add_row(team = 'Tampa Bay Buccaneers', value = 'Bucs') %>%
+  add_row(team = 'Green Bay Packers', value = 'GNB') %>%
+  add_row(team = 'Kansas City Chiefs', value = 'KAN') %>%
+  add_row(team = 'Kansas City Chiefs', value = 'KC Chiefs') %>%
+  add_row(team = 'New Orleans Saints', value = 'NOR') %>%
+  add_row(team = 'New England Patriots', value = 'NWE') %>%
+  add_row(team = 'New England Patriots', value = 'Pats') %>%
+  add_row(team = 'Minnesota Vikings', value = 'Vikes') %>%
+  add_row(team = 'Los Angeles Chargers', value = 'San Diego Chargers') %>%
+  add_row(team = 'San Francisco 49ers', value = "San Francisco 49âers") %>%
+  add_row(team = 'San Francisco 49ers', value = "S.f. 49ers") %>%
+  add_row(team = 'San Francisco 49ers', value = 'SFO') %>%
+  add_row(team = 'San Francisco 49ers', value = 'San Francisco 49.ers') %>%
+  add_row(team = 'Tampa Bay Buccaneers', value = 'TAM') %>%
+  add_row(team = 'New York Jets', value = 'N.Y. Jets') %>%
+  add_row(team = 'New York Giants', value = 'N.Y. Giants') %>%
+  add_row(team = 'New York Jets', value = 'NY Jets') %>%
+  add_row(team = 'New York Giants', value = 'NY Giants') %>%
+  add_row(team = 'New York Jets', value = 'Ny Jets') %>%
+  add_row(team = 'New York Giants', value = 'Ny Giants') %>%
+  add_row(team = 'Los Angeles Rams', value = 'L.A. Rams') %>%
+  add_row(team = 'Los Angeles Chargers', value = 'L.A. Chargers') %>%
+  add_row(team = 'Los Angeles Chargers', value = 'La Chargers') %>%
+  add_row(team = 'Los Angeles Chargers', value = 'SDG') %>%
+  add_row(team = 'Arizona Cardinals', value = 'PHO') %>%
+  add_row(team = 'Arizona Cardinals', value = 'AZ') %>%
+  add_row(team = 'Arizona Cardinals', value = 'Cards') %>%
+  add_row(team = 'Las Vegas Raiders', value = 'RAI') %>%
+  add_row(team = 'Los Angeles Rams', value = 'RAM') %>%
+  add_row(team = 'Los Angeles Rams', value = 'STL') %>%
+  add_row(team = 'Tennessee Titans', value = 'Tennesee') %>%
+  add_row(team = 'Tennessee Titans', value = 'Tennesee Titans') %>%
+  add_row(team = 'Tennessee Titans', value = '  Tennesse Titans') %>%
+  add_row(team = 'Tennessee Titans', value = 'TennesseeTitans') %>%
+  add_row(team = 'Washington Commanders', value = 'Washington Football') %>%
+  add_row(team = 'Tampa Bay Buccaneers', value = 'Tampa Bay Buccanneers') %>%
+  add_row(team = 'Tampa Bay Buccaneers', value = 'Tampa Bay Bucs') %>%
+  add_row(team = 'Jacksonville Jaguars', value = 'JAC') %>%
+  add_row(team = "Los Angeles Chargers", value = "San Angeles Chargers") %>%
+  add_row(team = 'Houston Texans', value = 'Houston Texas') %>%
+  add_row(team = "Green Bay Packers", value = "Green Pay Packers") %>%
+  add_row(team = "Tampa Bay Buccaneers", value = "Tampa Bay Buccs") %>%
+  add_row(team = 'Washington Commanders', value = 'Washington FT') %>%
+  add_row(team = 'Washington Commanders', value = 'Washington Pigskins') %>%
+  add_row(team = 'Tennessee Titans', value = 'Tennessee Titan') %>%
+  add_row(team = 'Tennessee Titans', value = 'Tenneessee Titans') %>%
+  add_row(team = 'Cincinnati Bengals', value = 'Cincinatti Bengals') %>%
+  add_row(team = 'Jacksonville Jaguars', value = 'Jaksonville Jaguars') %>%
+  add_row(team = 'Philadelphia Eagles', value = 'Phialadelphia') %>%
+  add_row(team = 'Philadelphia Eagles', value = 'Philidelphia Eagles') %>%
+  add_row(team = 'Los Angeles Chargers', value = 'Lose Angeles Chargers') %>%
+  add_row(team = 'Washington Commanders', value = 'Washinton') %>%
+  add_row(team = 'Los Angeles Chargers', value = 'Los Angles Chargers') %>%
+  add_row(team = 'San Francisco 49ers', value = 'San Fransico 49ers') %>%
+  add_row(team = 'San Francisco 49ers', value = 'S.F. 49ers') %>%
+  add_row(team = 'San Francisco 49ers', value = "San Francisco 49âers") %>%
+  add_row(team = 'San Francisco 49ers', value = 'San Franciso 49ers') %>%
+  add_row(team = 'San Francisco 49ers', value = "San Francisco 49'ers") %>%
+  add_row(team = 'Detroit Lions', value = 'Detriot Lions') %>%
+  add_row(team = 'Cleveland Browns', value = 'Bowns') %>%
+  add_row(team = 'Philadelphia Eagles', value = 'Phladelphis Eagles') %>%
+  add_row(team = 'Philadelphia Eagles', value = 'Philadephia Eagles') %>%
+  add_row(team = 'New England Patriots', value = 'NEP') %>%
+  add_row(team = 'New Orleans Saints', value = 'NOS') %>%
+  add_row(team = 'New Orleans Saints', value = 'NO Saints') %>%
+  add_row(team = 'Arizona Cardinals', value = 'ARZ') %>%
+  add_row(team = 'Arizona Cardinals', value = 'Arizona Falcons') %>%
+  add_row(team = 'Green Bay Packers', value = 'GBP') %>%
+  add_row(team = 'San Francisco 49ers', value = "San Francisco 49âers") %>%
+  add_row(team = "Tampa Bay Buccaneers", value = "TBB") %>%
+  add_row(team = "Tampa Bay Buccaneers", value = 'Tampa Bay Buccanears') %>%
+  add_row(team = "Tampa Bay Buccaneers", value = 'Tamba Bay Buccaneers') %>%
+  add_row(team = 'Washington Commanders', value = 'The Washington Commanders') %>%
+  add_row(team = 'Las Vegas Raiders', value = 'Oakland') %>%
+  add_row(team = 'Las Vegas Raiders', value = 'LV Raiders') %>%
+  add_row(team = 'Philadelphia Eagles', value = 'Philly') %>%
+  add_row(team = 'Philadelphia Eagles', value = 'Philly Eagles') %>%
+  add_row(team = 'Jacksonville Jaguars', value = 'JAX') %>%
+  add_row(team = 'Washington Commanders', value = 'WSH') %>%
+  add_row(team = 'Houston Texans', value = 'HST') %>%
+  add_row(team = 'Baltimore Ravens', value = 'BLT') %>%
+  add_row(team = 'Cleveland Browns', value = 'CLV') %>%
+  add_row(team = 'Los Angeles Rams', value = 'LA') %>%
+  add_row(team = 'Chicago Bears', value = 'Chciago Bears') %>%
+  add_row(team = 'Tampa Bay Buccaneers', value = 'Tampa Bay Bucaneers') %>%
+  add_row(team = 'Pittsburgh Steelers', value = 'Pitsburgh Steelers') %>%
+  arrange(team) %>%
+  distinct -> team_xwalk
+
+team_clean <- function(x) {
+  return(structure(team_xwalk$team, names = team_xwalk$value)[x])
+}
+
+name_fix <- function(x) {
+  x %>%
+    gsub(", Jr.", "", .) %>%
+    gsub(", Jr", "", .) %>%
+    gsub(", Sr.", "", .) %>%
+    gsub(", Sr", "", .) %>%
+    gsub(", JR.", "", .) %>%
+    gsub(", SR.", "", .) %>%
+    gsub(", Sr", "", .) %>%
+    gsub(", jr.", "", .) %>%
+    gsub(", sr.", "", .) %>%
+    gsub(" Jr.", "", .) %>%
+    gsub(" Jr", "", .) %>%
+    gsub(" Sr.", "", .) %>%
+    gsub(" Sr", "", .) %>%
+    gsub(" JR.", "", .) %>%
+    gsub(" SR.", "", .) %>%
+    gsub(" JR", "", .) %>%
+    gsub(" SR", "", .) %>%
+    gsub(" Sr", "", .) %>%
+    gsub(" jr.", "", .) %>%
+    gsub(" sr.", "", .) %>%
+    gsub(" IV", "", .) %>%
+    gsub(" III", "", .) %>%
+    gsub(" II", "", .) %>%
+    gsub(" lll", "", .) %>%
+    gsub(" ll", "", .) %>%
+    gsub('\"', "", .) %>%
+    sub("  ", " ", .) %>%
+    gsub("’", "'", .) -> x
+  
+  return(
+    case_when(
+      substring(x, 1, 2) == 'AJ' ~ sub("AJ", "A.J.", x),
+      substring(x, 1, 2) == 'AT' ~ sub("AT", "A.T.", x),
+      substring(x, 1, 2) == 'BJ' ~ sub("BJ", "B.J.", x),
+      substring(x, 1, 2) == 'CJ' ~ sub("CJ", "C.J.", x),
+      substring(x, 1, 2) == 'DJ' ~ sub("DJ", "D.J.", x),
+      substring(x, 1, 2) == 'EJ' ~ sub("EJ", "E.J.", x),
+      substring(x, 1, 2) == 'KJ' ~ sub("KJ", "K.J.", x),
+      substring(x, 1, 2) == 'MJ' ~ sub("MJ", "M.J.", x),
+      substring(x, 1, 2) == 'PJ' ~ sub("PJ", "P.J.", x),
+      substring(x, 1, 2) == 'RJ' ~ sub("RJ", "R.J.", x),
+      substring(x, 1, 2) == 'TJ' ~ sub("TJ", "T.J.", x),
+      substring(x, 1, 2) == 'Tj' ~ sub("Tj", "T.J.", x),
+      substring(x, 1, 2) == 'JC' ~ sub("JC", "J.C.", x),
+      substring(x, 1, 2) == 'JK' ~ sub("JK", "J.K.", x),
+      substring(x, 1, 2) == 'JD' ~ sub("JD", "J.D.", x),
+      substring(x, 1, 2) == 'JT' ~ sub("JT", "J.T.", x),
+      substring(x, 1, 2) == 'Jt' ~ sub("Jt", "J.T.", x),
+      substring(x, 1, 2) == 'JJ' ~ sub("JJ", "J.J.", x),
+      substring(x, 1, 2) == 'Jj' ~ sub("Jj", "J.J.", x),
+      substring(x, 1, 2) == 'JR' ~ sub("JR", "J.R.", x),
+      substring(x, 1, 2) == 'JL' ~ sub("JL", "J.L.", x),
+      substring(x, 1, 2) == 'LJ' ~ sub("LJ", "L.J.", x),
+      substring(x, 1, 2) == 'KT' ~ sub("KT", "K.T.", x),
+      substring(x, 1, 2) == 'TK' ~ sub("TK", "T.K.", x),
+      TRUE ~ x
+    )
+  )
+}
+
+name_match <- function(x, year = 2024) {
+  ifelse(
+    year > getMaxDraftYear() | year < getMinDraftYear(),
+    x,
+    ifelse(
+      year == 2024,
+      case_when(
+        x == 'Alfahiym Walcott' ~ 'Al Walcott',
+        x %in% c('Quinton Mitchell') ~ 'Quinyon Mitchell',
+        x %in% c('Eyabi Anoma', 'Eyabi Okie') ~ 'Eyabi Okie-Anoma',
+        x == 'Blake Corrum' ~ 'Blake Corum',
+        x == 'Beaux Limer' ~ 'Beaux Limmer',
+        x == 'Christian Mahigany' ~ 'Christian Mahogany',
+        x == 'Jamon Dumas-Johmson' ~ 'Jamon Dumas-Johnson',
+        x %in% c(
+          'Olu Fashanu',
+          'Oli Fashanu',
+          'Olu Fahanu',
+          'Olumuyiwa Fahanu'
+        ) ~ 'Olumuyiwa Fashanu',
+        x == 'Braden Trice' ~ 'Bralen Trice',
+        x == 'Cameron Little' ~ 'Cam Little',
+        x == 'Jahdae Brown' ~ 'Jahdae Barron',
+        x %in% c(
+          'Callen Bullock',
+          'Caden Bullock'
+        ) ~ 'Calen Bullock',
+        x == 'Cam Ward' ~ 'Cameron Ward',
+        x == 'Connor Cloby' ~ 'Connor Colby',
+        x == 'Cooper Bebee' ~ 'Cooper Beebe',
+        x == 'Edgerinn Cooper' ~ 'Edgerrin Cooper',
+        x %in% c('Patrick Peyton') ~ 'Patrick Payton',
+        x == 'Javonte Jean-Baptiste' ~ 'Javontae Jean-Baptiste',
+        x == 'John Alt' ~ 'Joe Alt',
+        x %in% c(
+          'Jc Latham',
+          'C.J. Latham'
+        ) ~ 'J.C. Latham',
+        x %in% c('J.j. Mccarthy', "Jj Mccarthy", "J,J. McCarthy", 'J.U. McCarthy') ~ 'J.J. McCarthy',
+        x %in% c('J.t. Tuimoloau', "J,T. Tuimoloau", "J.T. Tuimolau") ~ 'J.T. Tuimoloau',
+        x == 'Dwight Mcglothern' ~ 'Dwight McGlothern',
+        x == 'Ladd Mcconkey' ~ 'Ladd McConkey',
+        x == 'Marshawn Lloyd' ~ 'MarShawn Lloyd',
+        x == 'Jonathan Mendoze' ~ 'Jonathan Mendoza',
+        x == 'Kiran Amegadije' ~ 'Kiran Amegadjie',
+        x == 'Justin Ebogibe' ~ 'Justin Eboigbe',
+        x == 'Derick McLendon' ~ 'Derrick McLendon',
+        x == 'Tulu Griffin' ~ 'Lideatrick Griffin',
+        x %in% c('Talise Fuaga',
+                 'Taliese Guaga',
+                 'Tailese Fuaga') ~ 'Taliese Fuaga',
+        x == "D,J. James" ~ "D.J. James",
+        x == 'Deontre Prince' ~ 'Deantre Prince',
+        x == 'Donovan Greene' ~ 'Donavon Greene',
+        x %in% c(
+          'JaTavion Sanders',
+          'J.T. Sanders',
+          'Jatavion Sanders',
+          "Ja’tavion Sanders",
+          "Ja’Tavion Sanders",
+          "Ja'tavion Sanders",
+          "Jatavian Sanders",
+          "Ja’Tavion Sanders"
+        ) ~ "Ja'Tavion Sanders",
+        x == 'Jalen McMillian' ~ 'Jalen McMillan',
+        x == 'Cooper Dejean' ~ 'Cooper DeJean',
+        x == 'Tyler Nubine' ~ 'Tyler Nubin',
+        x == 'Corey Foreman' ~ 'Korey Foreman',
+        x == 'Dante Cephus' ~ 'Dante Cephas',
+        x == 'Jonah Ellis' ~ 'Jonah Elliss',
+        x %in% c('Troy Fauntanu', 'Troy Fantanu') ~ 'Troy Fautanu',
+        x %in% c('Laitu Latu', 'Laitau Latu') ~ 'Laiatu Latu',
+        x %in% 'Brandon Fiske' ~ 'Braden Fiske',
+        x %in% c(
+          'Jerzhan Newton',
+          'Johnny Newton',
+          'JerZhan Newton',
+          'Jer Zhan Newton',
+          'JerZahan Newton',
+          "Jer’zhan Newton",
+          "Jer'zhan Newton",
+          "Jer’Zahn Newton"
+        ) ~ "Jer'Zhan Newton",
+        x == 'Juice Wells' ~ 'Antwane Wells',
+        x == 'Kamarri Lassiter' ~ 'Kamari Lassiter',
+        x %in% c(
+          'Kingsley Suamatia',
+          'Kinsley Suamataia',
+          'Kingley Suamataia',
+          "Kingsley Suamatiaia"
+        ) ~ 'Kingsley Suamataia',
+        x %in% c("JhaQuan Jackson") ~ "Jha'Quan Jackson",
+        x == 'Jaden Sundell' ~ 'Jalen Sundell',
+        x == 'Kam Butler' ~ "Kameron Butler",
+        x %in% c("Kamren Kinchins", "Kamren Kitchens", "Kam Kinchens", "Kamren Kitchens") ~ "Kamren Kinchens",
+        x == 'Keon Johnson' ~ 'Keon Coleman',
+        x == 'Kris Abrams Draine' ~ 'Kris Abrams-Draine',
+        x == 'J. Michael Sturdivant' ~ 'J.Michael Sturdivant',
+        x %in% c('Ruke Ornhorhoro',
+                 'Ruke Orhohoro') ~ 'Ruke Orhorhoro',
+        x == 'Mike Barrett' ~ 'Michael Barrett',
+        x %in% c('Drake May', 'Draft Maye') ~ 'Drake Maye',
+        x == 'Zack Zinter' ~ 'Zak Zinter',
+        x == 'Uch Ndukwe' ~ 'Uche Ndukwe',
+        x == 'Garrett Greenfield' ~ 'Garret Greenfield',
+        x == 'Nook Bradford' ~ 'Millard Bradford',
+        x == 'Jaylon Ford' ~ 'Jaylan Ford',
+        x == 'Jojo Earle' ~ 'JoJo Earle',
+        x == 'Tyler Grable' ~ 'Tylan Grable',
+        x == 'Demeer Blankumsee' ~ 'DeMeer Blankumsee',
+        x == 'Mike Sainristill' ~ 'Mike Sainristil',
+        x == 'Marcelles Dial' ~ 'Marcellas Dial',
+        x %in% c('Tez Walker') ~ 'Devontez Walker',
+        x %in% c(
+          'Mckinnley Jackson',
+          'McKinley Jackson'
+        ) ~ 'McKinnley Jackson',
+        x %in% c(
+          'Kool-Aid Mckinstry',
+          'Kool Aid McKinstry',
+          'Kool-aid McKinstry',
+          "Ga'Quincy McKinstry",
+          "GaQuincy McKinstry",
+          "Ga'quincy Mckinstry"
+        ) ~ 'Kool-Aid McKinstry',
+        x == 'Marvin Harrision' ~ 'Marvin Harrison',
+        x %in% c('Mason Smith', 'Amazon Smith', 'Maasen Smith') ~ 'Maason Smith',
+        x %in% c('Jaquan Sheppard', 'JaQuan Sheppard', "Ja'quan Sheppard") ~ "Ja'Quan Sheppard",
+        x == 'Matthew Lee' ~ "Matt Lee",
+        x == 'Mike Hall' ~ 'Michael Hall',
+        x == 'Montell Johnson' ~ 'Montrell Johnson',
+        x == 'Orande Gadsden' ~ 'Oronde Gadsden',
+        x %in% c('Andrew Mukaba') ~ 'Andrew Mukuba',
+        x == 'Tyliek Williams' ~ 'Tyleik Williams',
+        x %in% c('Dadrian Taylor-Demerson') ~ 'Dadrion Taylor-Demerson',
+        x %in% c(
+          'Raheim Rocket Sanders',
+          'Rocket Sanders'
+        ) ~ 'Raheim Sanders',
+        x == 'Audric Estim' ~ 'Audric Estime',
+        x %in% c('JaLynn Polk',
+                 "Ja’Lynn Polk") ~ "Ja'Lynn Polk",
+        x %in% c('Joquavious Marks', 'JoQuavious Marks', "Jo'quavious Marks") ~ "Jo'Quavious Marks",
+        x == 'Fabian Lovett' ~ 'Fabien Lovett',
+        x %in% c(
+          'Rome Odunz',
+          'Romeo Odunze',
+          'Rome Odunza'
+        ) ~ 'Rome Odunze',
+        x == 'Tanner Koizol' ~ 'Tanner Koziol',
+        x %in% c('Xavier Leggette') ~ 'Xavier Legette',
+        x %in% c('Adonai Ad Mitchell',
+                 'AD Mitchell') ~ "Adonai Mitchell",
+        x %in% c('Sedrick Van Pran Granger',
+                 'Sedrick Van Pran-Granger',
+                 'Sedrick Van') ~ 'Sedrick Van Pran',
+        x == 'Shadeur Sanders' ~ 'Shedeur Sanders',
+        x %in% c(
+          'Treyveon Henderson',
+          'Treveyon Henderson'
+        ) ~ 'TreVeyon Henderson',
+        x %in% c('TVondre Sweat', "T’Vondre Sweat", "T’Vondre Sweat") ~ "T'Vondre Sweat",
+        x == 'Xavier Worth' ~ 'Xavier Worthy',
+        x %in% c(
+          "JaCorey Brooks",
+          "Jacorey Boroks",
+          "Ja’Corey Brooks"
+        ) ~ "Ja'Corey Brooks",
+        x == "James Marshall" ~ 'Jason Marshall',
+        x %in% c("Johnathon Brooks") ~ 'Johnathon Brooks',
+        x == 'Rahseen Ali' ~ 'Rasheen Ali',
+        x == 'Tony Franklin' ~ 'Troy Franklin',
+        x %in% c('Demeioun Robinson',
+                 'Demeioun Chop Robinson') ~ 'Chop Robinson',
+        x == "Emecka Egbuka" ~ "Emeka Egbuka",
+        x == 'Calean Carson' ~ 'Caelen Carson',
+        x == "Tre'mon Morris-Brash" ~ "Tre'Mon Morris-Brash",
+        x %in% c('Duce marksnut', "Darian Chetnut") ~ 'Darian Chestnut',
+        x %in% c('Tyrone Hopper', 'TyRon Hopper') ~ "Ty'Ron Hopper",
+        x == "DeCorian Clark" ~ "De'Corian Clark",
+        x %in% c("Isaiah Davi") ~ "Isaiah Davis",
+        x == "Mar'Keise Irving" ~ "Bucky Irving",
+        x == 'Kitan Oladpo' ~ 'Kitan Oladapo',
+        x %in% c('Ladarius Henderson') ~ 'LaDarius Henderson',
+        x %in% c('Graham Burton') ~ 'Graham Barton',
+        TRUE ~ x
+      ),
+      ifelse(
+        year == 2023,
+        case_when(
+          x == 'Jalen Raymond' ~ 'Jalen Redmond',
+          x == 'Kayshoun Boutte' ~ 'Kayshon Boutte',
+          x == 'Peter Skorosnki' ~ 'Peter Skoronski',
+          x == 'AT Perry' ~ 'A.T. Perry',
+          x == 'Adetomiwa Adabawore' ~ 'Adetomiwa Adebawore',
+          x == 'D.j. Turner' ~ 'D.J. Turner',
+          x == 'Caleb Simpson' ~ 'Caleb Sampson',
+          x == 'T.J. Coleman' ~ 'D.J. Coleman',
+          x == 'Cody Macuh' ~ 'Cody Mauch',
+          x == 'Zach Charbonne' ~ 'Zach Charbonnet',
+          x == "Tre'Vius Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Marte Marpu' ~ 'Marte Mapu',
+          x == 'Ali Gaye.' ~ 'Ali Gaye',
+          x == 'Antonio Mafi' ~ 'Atonio Mafi',
+          x == 'Troy Doege' ~ 'Jarret Doege',
+          x == 'TK McLendon' ~ 'T.K. McLendon',
+          x == 'Warren McLendon' ~ 'Warren McClendon',
+          x == 'Luke Shoonmaker' ~ 'Luke Schoonmaker',
+          x == 'Jordan Addizon' ~ 'Jordan Addison',
+          x == 'Jake Andrew' ~ 'Jake Andrews',
+          x == 'Israel Abinakanda' ~ 'Israel Abanikanda',
+          x == 'Deionte Banks' ~ 'Deonte Banks',
+          x == 'Marte Marpu' ~ 'Marte Mapu',
+          x == 'Cameron McDonald' ~ 'Camren McDonald',
+          x == 'Dayain Henley' ~ 'Daiyan Henley',
+          x == 'Roschon Johnon' ~ 'Roschon Johnson',
+          x == 'Nolan Smth' ~ 'Nolan Smith',
+          x == 'Calijah Klancy' ~ 'Calijah Kancey',
+          x == "Ja'Ayir Brown" ~ "Ji'Ayir Brown",
+          x == 'Byrce Young' ~ 'Bryce Young',
+          x == 'Isaiah Mcguire' ~ 'Isaiah McGuire',
+          x == 'Will Mcdonald' ~ 'Will McDonald',
+          x == 'Wil Mcdonald' ~ 'Will McDonald',
+          x == 'Wil McDonald' ~ 'Will McDonald',
+          x == 'Dee Winter' ~ 'Dee Winters',
+          x == 'Quinton Johnson' ~ 'Quintin Johnston',
+          x == 'Jaxson Smith-Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Bijan Robinsin' ~ 'Bijan Robinson',
+          x == 'AT Perry' ~ 'A.T. Perry',
+          x == 'Rejzhon Wright' ~ 'Rejzohn Wright',
+          x == 'Sala Aumavae-Laulu' ~ 'Malaesala Aumavae-Laulu',
+          x == 'Blake Whitehart' ~ 'Blake Whiteheart',
+          x == "Tre Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Nathanial Dell' ~ 'Nathaniel Dell',
+          x == 'Antonio Mafi' ~ 'Atonio Mafi',
+          x == 'Moro Ojmo' ~ 'Moro Ojomo',
+          x == 'Tuli Tuipultou' ~ 'Tuli Tuipulotu',
+          x == 'Devonta Banks' ~ 'Deonte Banks',
+          x == 'Christian Conzalez' ~ 'Christian Gonzalez',
+          x == 'John Gaines' ~ 'Jon Gaines',
+          x == 'Puka Nakua' ~ 'Puka Nacua',
+          x == 'Yassir Abdullah' ~ 'Yasir Abdullah',
+          x == 'Israel Ibanikanda' ~ 'Israel Abanikanda',
+          x == 'Xaver Hutchinson' ~ 'Xavier Hutchinson',
+          x == 'Jalon Jones' ~ 'Jaylon Jones',
+          x == 'Charles Jones' ~ 'Charlie Jones',
+          x == 'Deonta Banks' ~ 'Deonte Banks',
+          x == 'Bryan Beese' ~ 'Bryan Bresee',
+          x == 'Anthony Richardon' ~ 'Anthony Richardson',
+          x == 'Andrew Vorhes' ~ 'Andrew Vorhees',
+          x == "Tre'Vius Hidges Tomlinson"  ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Kalee Ringo' ~ 'Kelee Ringo',
+          x == 'Sam LePorta' ~ 'Sam LaPorta',
+          x == 'Corey Trice' ~ 'Cory Trice',
+          x == "Michael Owuwu" ~ "Michael Owusu",
+          x == "O'Cyrus Torrencw" ~ "O'Cyrus Torrence",
+          x == 'TreVius Hodgles-Tomlinson' ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Jake Anderws' ~ 'Jake Andrews',
+          x == 'Makhi Blackmon' ~ 'Mekhi Blackmon',
+          x == 'Clark Philips' ~ 'Clark Phillips',
+          x == 'Caljiah Kancey' ~ 'Calijah Kancey',
+          x == "O'Cyrus Torrance" ~ "O'Cyrus Torrence",
+          x == 'Tyreke Stevenson' ~ 'Tyrique Stevenson',
+          x == 'Tryee Wilson' ~ 'Tyree Wilson',
+          x == 'Travis Vokolex' ~ 'Travis Vokolek',
+          x == 'Marte Mafu' ~ 'Marte Mapu',
+          x == 'Jartavious Martin' ~ 'Jartavius Martin',
+          x == 'Jalen Moreno' ~ 'Jalen Cropper',
+          x == 'Jakorrian Bennett' ~ 'Jakorian Bennett',
+          x == 'Dontavion Wicks' ~ 'Dontayvion Wicks',
+          x == 'Devon Archane' ~ 'Devon Achane',
+          x == 'Braedon Daniels' ~ 'Braeden Daniels',
+          x == 'Aedetomia Adebawore' ~ 'Adetomiwa Adebawore',
+          x == 'Andrei Iosvias' ~ 'Andrei Iosivas',
+          x == 'McClendon Curtiis' ~ 'McClendon Curtis',
+          x == 'Marvin Mins' ~ 'Marvin Mims',
+          x == 'Sidney Brown' ~ 'Sydney Brown',
+          x == 'VanDarius Cowan' ~ 'Vandarius Cowan',
+          x == 'VanDarius Cowen' ~ 'Vandarius Cowan',
+          x == 'Ronnie Phelps' ~ 'Lonnie Phelps',
+          x == 'Mitch Tinsley' ~ 'Mitchell Tinsley',
+          x == 'Kendre MIller' ~ 'Kendre Miller',
+          x == 'Warren McLendon' ~ 'Warren McClendon',
+          x == 'Tuli Tuipuloto' ~ 'Tuli Tuipulotu',
+          x == 'Tuli Tulipulotu' ~ 'Tuli Tuipulotu',
+          x == 'Tanner McAllister' ~ 'Tanner McCalister',
+          x == 'Richard Gouriaige' ~ 'Richard Gouraige',
+          x == 'Lonnie Phillips' ~ 'Lonnie Phelps',
+          x == "Ken'Trel Clark" ~ "Kei'Trel Clark",
+          x == 'Keannu Benton' ~ 'Keeanu Benton',
+          x == 'Jaden Hazelwood' ~ 'Jadon Haselwood',
+          x == 'Isiah Land' ~ 'Isaiah Land',
+          x == 'Henery Baiivalu' ~ 'Henry Bainivalu',
+          x == 'Dorian Wiliams' ~ 'Dorian Williams',
+          x == 'Dontavyion Wicks' ~ 'Dontayvion Wicks',
+          x == 'DeMarvion Overshow' ~ 'DeMarvion Overshown',
+          x == 'Chandler Zavara' ~ 'Chandler Zavala',
+          x == 'Jartavis Martin' ~ 'Jartavius Martin',
+          x == 'Brodic Martin' ~ 'Brodric Martin',
+          x == 'Braden Daniels' ~ 'Braeden Daniels',
+          x == "TreVius Hodges-Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == "Trevius Hodges-Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Olusegun Olawatimi' ~ 'Olusegun Oluwatimi',
+          x == 'Chandler Savala' ~ 'Chandler Zavala',
+          x == 'will Mcdonald' ~ 'Will McDonald',
+          x == 'Isaiah Mcguire' ~ 'Isaiah McGuire',
+          x == 'Kaevon Meriweather' ~ 'Kaevon Merriweather',
+          x == 'Nik Broeker' ~ 'Nick Broeker',
+          x == 'Warren McClendn' ~ 'Warren McClendon',
+          x == 'Jaxon Smith-Njgiba' ~ 'Jaxon Smith-Njigba',
+          x == 'Bryce Ford' ~ 'Bryce Ford-Wheaton',
+          x == 'Zack Evans' ~ 'Zach Evans',
+          x == 'Tyreke Stevenson' ~ 'Tyrique Stevenson',
+          x == 'Mekhi Blackman' ~ 'Mekhi Blackmon',
+          x == 'Keenau Benton' ~ 'Keeanu Benton',
+          x == "Ji' Ayir" ~ "Ji'Ayir Brown",
+          x == 'Sirvocea Dennis' ~ 'SirVocea Dennis',
+          x == 'C J Stroud' ~ 'C.J. Stroud',
+          x == 'Felix Anduke-Uzomah' ~ 'Felix Anudike-Uzomah',
+          x == 'Cody Mouch' ~ 'Cody Mauch',
+          x == 'Jacquelin Roy' ~ 'Jaquelin Roy',
+          x == 'Steve Avilia' ~ 'Steve Avila',
+          x == 'Deontae Banks' ~ 'Deonte Banks',
+          x == 'Quentin Johnson' ~ 'Quentin Johnston',
+          x == 'Jaxon-Smith Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Jaxon-Smith Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Jaxson Smith-Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Tanner Mc' ~ 'Tanner McKee',
+          x == 'Warren Mc' ~ 'Warren McClendon',
+          x == 'Jaxon Smith-Nijigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Caljah Kancey' ~ 'Calijah Kancey',
+          x == 'Myles Nurphy' ~ 'Myles Murphy',
+          x == 'Karlo Brooks' ~ 'Karl Brooks',
+          x == 'Grant Maag' ~ 'Garett Maag',
+          x == 'Tyree Wison' ~ 'Tyree Wilson',
+          x == 'Paris Johnston' ~ 'Paris Johnson',
+          x == 'Peter Skoronwski' ~ 'Peter Skoronski',
+          x == 'Peter Skoronoski' ~ 'Peter Skoronski',
+          x == 'Mathew Bergeron' ~ 'Matthew Bergeron',
+          x == 'Luke Wyppler' ~ 'Luke Wypler',
+          x == 'C.J.Stroud' ~ 'C.J. Stroud',
+          x == 'Deon Banks' ~ 'Deonte Banks',
+          x == 'Brian Breese' ~ 'Bryan Bresee',
+          x == 'Bryan Breesee' ~ 'Bryan Bresee',
+          x == 'Jalen Moreno-Cooper' ~ 'Jalen Cropper',
+          x == "Tre'vius Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Adetomiba Adebawore' ~ 'Adetomiwa Adebawore',
+          x == 'Adetomiwa Adeboware' ~ 'Adetomiwa Adebawore',
+          x == 'Adetomiwa Adebowore' ~ 'Adetomiwa Adebawore',
+          x == 'Coby Wooden' ~ 'Colby Wooden',
+          x == 'Wil Levis' ~ 'Will Levis',
+          x == 'Terrell Smith' ~ 'Terell Smith',
+          x == 'SirVocea Denis' ~ 'SirVocea Dennis',
+          x == 'Shaq Davis' ~ 'Shaquan Davis',
+          x == 'P.JMustipher' ~ 'P.J. Mustipher',
+          x == 'Malike Knowles' ~ 'Malik Knowles',
+          x == 'KeiTrel Clark' ~ "Kei'Trel Clark",
+          x == 'K.JHenry' ~ 'K.J. Henry',
+          x == 'J.LSkinner' ~ 'J.L. Skinner',
+          x == 'D.JJohnson' ~ 'D.J. Johnson',
+          x == 'D.JTurner' ~ 'D.J. Turner',
+          x == 'D.JDale' ~ 'D.J. Dale',
+          x == 'C.JStroud' ~ 'C.J. Stroud',
+          x == 'C.JJohnson' ~ 'C.J. Johnson',
+          x == 'B.JOjulari' ~ 'B.J. Ojulari',
+          x == 'B.JThompson' ~ 'B.J. Thompson',
+          x == 'A.JFinley' ~ 'A.J. Finley',
+          x == 'A.TPerry' ~ 'A.T. Perry',
+          x == 'Henry TooToo' ~ "Henry To'o To'o",
+          x == 'Noah Grindoff' ~ 'Noah Gindorff',
+          x == 'Lukas VanNess' ~ 'Lukas Van Ness',
+          x == 'TreVius Hodges Tomlinson' ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'D. Thompson-Robinson' ~ 'Dorian Thompson-Robinson',
+          x == 'Tanner Mc' ~ 'Tanner McKee',
+          x == 'Felix Anudike-Uzomoah' ~ 'Felix Anudike-Uzomah',
+          x == 'Will Mc' ~ 'Will McDonald',
+          x == 'B.J. Olujari' ~ 'B.J. Ojulari',
+          x == 'Brett Laing' ~ 'Brent Laing',
+          x == "Henry To'o'To'o" ~ "Henry To'o To'o",
+          x == "DeWayne Bride" ~ "DeWayne McBride",
+          x == "Emmanel Forbes" ~ "Emmanuel Forbes",
+          x == "Keenan Burton" ~ "Keeanu Benton",
+          x == "Ji Ayir" ~ "Ji'Ayir Brown",
+          x == "Ji'ayir Brown" ~ "Ji'Ayir Brown",
+          x == "Israel Abanikanoa" ~ "Israel Abanikanda",
+          x == "Jarren Hall" ~ "Jaren Hall",
+          x == "DeMarco Hellams" ~ "DeMarcco Hellams",
+          x == "Tuli Tuipolotu" ~ "Tuli Tuipulotu",
+          x == 'Dj Turner' ~ 'D.J. Turner',
+          x == 'Daiyon Henley' ~ 'Daiyan Henley',
+          x == 'Daiyan Hanley' ~ 'Daiyan Henley',
+          x == 'Parris Johnson' ~ 'Paris Johnson',
+          x == 'Quintin Johnston' ~ 'Quentin Johnston',
+          x == 'Lukas Vann Ness' ~ 'Lukas Van Ness',
+          x == 'Dalton Kincaide' ~ 'Dalton Kincaid',
+          x == 'Mohamoud Diabete' ~ 'Mohamoud Diabate',
+          x == 'Jalen Hyatt' ~ 'Jalin Hyatt',
+          x == 'Calijah Klancey' ~ 'Calijah Kancey',
+          x == "O'cyrus Torrence" ~ "O'Cyrus Torrence",
+          x == 'Kalijah Kancey' ~ 'Calijah Kancey',
+          x == 'Jarren Hall' ~ 'Jaren Hall',
+          x == 'Sam La' ~ 'Sam LaPorta',
+          x == 'Christain Gonzalez' ~ 'Christian Gonzalez',
+          x == 'Demarcco Hellams' ~ 'DeMarcco Hellams',
+          x == 'Richard Gouriage' ~ 'Richard Gouraige',
+          x == 'Jaiden Woodberry' ~ 'Jaiden Woodbey',
+          x == 'Cody Mach' ~ 'Cody Mauch',
+          x == 'Bryce Barringer' ~ 'Bryce Baringer',
+          x == 'Drew Saunders' ~ 'Drew Sanders',
+          x == 'Luka Van Ness' ~ 'Lukas Van Ness',
+          x == 'Dawan Jones' ~ 'Dawand Jones',
+          x == 'Jackson Smith-Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Snacks Coburn' ~ 'Keondre Coburn',
+          x == 'Jon Michael Schmitz' ~ 'John Michael Schmitz',
+          x == 'Devin Achane' ~ 'Devon Achane',
+          x == 'Mohamoud Diabete' ~ 'Mohamoud Diabate',
+          x == 'Tuli Tuioulotu' ~ 'Tuli Tuipulotu',
+          x == 'Olusegun Oluwaitimi' ~ 'Olusegun Oluwatimi',
+          x == 'Luke Whypler' ~ 'Luke Wypler',
+          x == 'John Michael Scmitz' ~ 'John Michael Schmitz',
+          x == 'Isreal Abinkanda' ~ 'Israel Abanikanda',
+          x == 'Derick Brown' ~ 'Derick Hall',
+          x == 'Curtis McClendon' ~ 'McClendon Curtis',
+          x == 'Bryan Breece' ~ 'Bryan Bresee',
+          x == 'Brodrick Jones' ~ 'Broderick Jones',
+          x == 'Sam Laporta' ~ 'Sam LaPorta',
+          x == 'Calijah Kansey' ~ 'Calijah Kancey',
+          x == 'Tank Bigsy' ~ 'Tank Bigsby',
+          x == 'Jaxon Smith-Ngijba' ~ 'Jaxon Smith-Njigba',
+          x == "Henry To'otto'o" ~ "Henry To'o To'o",
+          x == 'Antoine Johnson' ~ 'Antonio Johnson',
+          x == 'Tuli Tuipilotu' ~ 'Tuli Tuipulotu',
+          x == 'JiAyir Brown' ~ "Ji'Ayir Brown",
+          x == 'Bryan Young' ~ 'Byron Young',
+          x == 'Ade Adebawore' ~ 'Adetomiwa Adebawore',
+          x == 'Jeff Gunter' ~ 'Jeffrey Gunter',
+          x == 'Daiyon Henley' ~ 'Daiyan Henley',
+          x == 'Nick Hamtpon' ~ 'Nick Hampton',
+          x == 'Dalton Kinkaid' ~ 'Dalton Kincaid',
+          x == 'Keylee Ringo' ~ 'Kelee Ringo',
+          x == 'Jaxon Smith-Injigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Bijan Johnson' ~ 'Bijan Robinson',
+          x == 'OL North' ~ 'Cody Mauch',
+          x == 'Devon Weatherspoon' ~ 'Devon Witherspoon',
+          x == 'Brain Branch' ~ 'Brian Branch',
+          x == 'Blu Kelly' ~ 'Kyu Blu Kelly',
+          x == 'Bryce Barringer' ~ 'Bryce Baringer',
+          x == 'Jarren Hall' ~ 'Jaren Hall',
+          x == 'John-Michael Schmitz' ~ 'John Michael Schmitz',
+          x == 'Xaavian Valladay' ~ 'Xazavian Valladay',
+          x == 'Sam La' ~ 'Sam LaPorta',
+          x == 'Josh Wylie' ~ 'Josh Whyle',
+          x == 'Saiki Ika' ~ 'Siaki Ika',
+          x == 'Laitu Latu' ~ 'Laiatu Latu',
+          # x == 'Daniel Wright' ~ 'Darnell Wright',
+          x == 'Lucas Van Ness' ~ 'Lukas Van Ness',
+          x == 'Emanuel Forbes' ~ 'Emmanuel Forbes',
+          x == 'Anthon Harrison' ~ 'Anton Harrison',
+          x == 'Tyler Van Ness' ~ 'Lukas Van Ness',
+          x == 'OL Cody' ~ 'Cody Mauch',
+          x == 'Tim Demorat' ~ 'Tim DeMorat',
+          x == 'Sedrick VanPran' ~ 'Sedrick Van Pran',
+          x == 'Luke Musgrove' ~ 'Luke Musgrave',
+          x == 'Lucas VanNess' ~ 'Lukas Van Ness',
+          x == 'Kyu Blue Kelly' ~ 'Kyu Blu Kelly',
+          x == 'Jason Njigba-Smith' ~ 'Jaxon Smith-Njigba',
+          x == 'Zack Kunts' ~ 'Zack Kuntz',
+          x == 'Devon Weatherpoon' ~ 'Devon Witherspoon',
+          x == 'Peter Skronski' ~ 'Peter Skoronski',
+          x == 'Peter Skoronksi' ~ 'Peter Skoronski',
+          x == 'Siaka Ika' ~ 'Siaki Ika',
+          x == 'Trevor Trevor Reid' ~ 'Trevor Reid',
+          x == 'OCyrus Torrence' ~ "O'Cyrus Torrence",
+          x == 'Jaxon Smith Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Jaxon SmithNjigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Puke Nacua' ~ 'Puka Nacua',
+          x == "Ke'Trel Clark" ~ "Kei'Trel Clark",
+          x == "Tre'Vius Hodges" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Darnell Washingon' ~ 'Darnell Washington',
+          x == 'Rasheed Rice' ~ 'Rashee Rice',
+          x == 'Rayshee Rice' ~ 'Rashee Rice',
+          x == 'Andrew Voerhees' ~ 'Andrew Vorhees',
+          x == 'Gervon Dixon' ~ 'Gervon Dexter',
+          x == 'Jaxon Smith-' ~ 'Jaxon Smith-Njigba',
+          x == 'Christian Gonzales' ~ 'Christian Gonzalez',
+          x == 'Micahel Mayer' ~ 'Michael Mayer',
+          x == 'Keele Ringo' ~ 'Kelee Ringo',
+          x == 'Bryan Breese' ~ 'Bryan Bresee',
+          x == 'Brian Bresee' ~ 'Bryan Bresee',
+          x == 'John Michael-Schmitz' ~ 'John Michael Schmitz',
+          x == 'Felix Anudike' ~ 'Felix Anudike-Uzomah',
+          x == 'Jaelin Hyatt' ~ 'Jalin Hyatt',
+          x == 'Cedrick Tillman' ~ 'Cedric Tillman',
+          x == 'Peter Skorinski' ~ 'Peter Skoronski',
+          x == 'Jory Porter' ~ 'Joey Porter',
+          x == 'Jayin Hyatt' ~ 'Jalin Hyatt',
+          x == 'Cristian Gonzalez' ~ 'Christian Gonzalez',
+          x == 'Tuli Tuipulota' ~ 'Tuli Tuipulotu',
+          x == 'Tuli Tuipolatu' ~ 'Tuli Tuipulotu',
+          x == 'Matt Jones' ~ 'Matthew Jones',
+          x == 'Matt Bergeron' ~ 'Matthew Bergeron',
+          x == 'Emmanual Forbes' ~ 'Emmanuel Forbes',
+          x == 'A.T. A.T. Perry' ~ 'A.T. Perry',
+          x == 'Starling Thomas V' ~ 'Starling Thomas',
+          x == 'Jalen Monroe-Cropper' ~ 'Jalen Cropper',
+          x == 'Conner Galvin' ~ 'Connor Galvin',
+          x == 'Ahkeem Mesidor' ~ 'Akheem Mesidor',
+          x == 'Kelly Ringo' ~ 'Kelee Ringo',
+          x == 'Tank Bigbsy' ~ 'Tank Bigsby',
+          x == 'Calijah Kacey' ~ 'Calijah Kancey',
+          x == 'Olu Oluwatimi' ~ 'Olusegun Oluwatimi',
+          x == 'Wayna Morris' ~ 'Wanya Morris',
+          x == 'Tavian Thomas' ~ 'Tavion Thomas',
+          x == 'SirVoccea Dennis' ~ 'SirVocea Dennis',
+          x == 'Mo Ibrahim' ~ 'Mohamed Ibrahim',
+          x == 'Malachai Moore' ~ 'Malachi Moore',
+          x == 'Luke Van Ness' ~ 'Lukas Van Ness',
+          x == 'Kendrick Duncan' ~ 'Kenderick Duncan',
+          # x == 'Jaylon Johnson' ~ 'Jaylon Jones',
+          x == 'Jakorion Bennett' ~ 'Jakorian Bennett',
+          x == "J'Ayir Brown" ~ "Ji'Ayir Brown",
+          x == 'DeMarrco Hellams' ~ 'DeMarcco Hellams',
+          x == 'Dalton Rising' ~ 'Cameron Rising',
+          x == 'Andre Iosivas' ~ 'Andrei Iosivas',
+          x == 'Corey Durden' ~ 'Cory Durden',
+          x == 'Balke Corum' ~ 'Blake Corum',
+          x == "Henry To'Oto'o" ~ "Henry To'o To'o",
+          x == "Henry To'oTo'o" ~ "Henry To'o To'o",
+          x == 'Devin Witherspoon' ~ 'Devon Witherspoon',
+          x == 'OT Cody' ~ 'Cody Mauch',
+          x == 'Van Pran' ~ 'Sedrick Van Pran',
+          x == 'Will Mcdonald' ~ 'Will McDonald',
+          x == 'will Mcdonald' ~ 'Will McDonald',
+          x == 'Stetson Benntt' ~ 'Stetson Bennett',
+          x == 'Rahsee Rice' ~ 'Rashee Rice',
+          x == 'Nick Salviveri' ~ 'Nick Saldiveri',
+          x == 'Keanu Benton' ~ 'Keeanu Benton',
+          x == 'Parris Johnson' ~ 'Paris Johnson',
+          x == 'Shaquan Shaq Davis' ~ 'Shaquan Davis',
+          x == 'Zaach Pickens' ~ 'Zacch Pickens',
+          x == 'Quinton Barroq' ~ 'Quinton Barrow',
+          x == "Ja'quan Sheppard" ~ "Ja'Quan Sheppard",
+          x == 'Cam Mitchell' ~ 'Cameron Mitchell',
+          x == 'Jaelin Hyatt' ~ 'Jalin Hyatt',
+          x == 'Cedrick Tillman' ~ 'Cedric Tillman',
+          x == 'Felix Anudike' ~ 'Felix Anudike-Uzomah',
+          x == 'Van Ness' ~ 'Lukas Van Ness',
+          x == 'David Sills V' ~ 'David Sills',
+          x == 'Ugochukwu Amadi' ~ 'Ugo Amadi',
+          x == 'Cece Jefferson' ~ 'CeCe Jefferson',
+          x == 'Deion Calhoun' ~ 'Shaq Calhoun',
+          x == 'Elkanah Dillon' ~ 'Kano Dillon',
+          x == 'Jeff Okudah' ~ 'Jeffrey Okudah',
+          x == 'Nick Westbrook' ~ 'Nick Westbrook-Ikhine',
+          x == 'Davon Hamilton' ~ 'DaVon Hamilton',
+          x == 'Joe Tryon' ~ 'Joe Tryon-Shoyinka',
+          x == 'Jayson Oweh' ~ 'Odafe Oweh',
+          x == 'Bennett Skowronek' ~ 'Ben Skowronek',
+          x == 'Isaih Pacheco' ~ 'Isiah Pacheco',
+          x == 'Devontay Taylor' ~ 'Devontay Love-Taylor',
+          x == 'Marcelino Ball' ~ 'Marcelino McCrary-Ball',
+          x == 'Xavier Newman' ~ 'Xavier Newman-Johnson',
+          x == 'Jarreth Sterns' ~ 'Jerreth Sterns',
+          x == "Tre'mon Morris-Brash" ~ "Tre'Mon Morris-Brash",
+          x == 'Eyabi Anoma' ~ 'Eyabi Okie',
+          x == 'Charmarri Conner' ~ 'Chamarri Conner',
+          x == 'Evan Wiilliams' ~ 'Evan Williams',
+          x == 'Mekhi Gardner' ~ 'Mekhi Garner',
+          x == 'Jartavious Martin' ~ 'Jartavius Martin',
+          x == 'Quan Martin' ~ 'Jartavius Martin',
+          x == 'TE Tucker' ~ 'Tucker Kraft',
+          x == 'Jaylin Hyatt' ~ 'Jalin Hyatt',
+          x == 'Devon Whiterspoon' ~ 'Devon Witherspoon',
+          x == 'Garrett Willams' ~ 'Garrett Williams',
+          x == 'Felix Anudike' ~ 'Felix Anudike-Uzomah',
+          x == 'Dj Uiagalelei' ~ 'D.J. Uiagalelei',
+          x == 'Peter Skoronsky' ~ 'Peter Skoronski',
+          x == 'Jaelin Hyatt' ~ 'Jalin Hyatt',
+          x == 'B.J. Oljulari' ~ 'B.J. Ojulari',
+          x == 'Thomas Greany' ~ 'Thomas Greaney',
+          x == 'Sedrick Van-Pran' ~ 'Sedrick Van Pran',
+          x == 'Mekhi Gardner' ~ 'Mekhi Garner',
+          x == 'Emilk Ekiyor' ~ 'Emil Ekiyor',
+          x == 'Jack Campell' ~ 'Jack Campbell',
+          x == 'Felix Anudike-Uzoma' ~ 'Felix Anudike-Uzomah',
+          x == 'Jaxson Smith Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Quinton Johnston' ~ 'Quentin Johnston',
+          x == 'Peter Skornowki'~ 'Peter Skoronski',
+          x == 'Miles Murphy' ~ 'Myles Murphy',
+          x == 'Jordan Adison' ~ 'Jordan Addison',
+          x == 'Andrew Voorhees' ~ 'Andrew Vorhees',
+          x == 'Bijon Robinson' ~ 'Bijan Robinson',
+          x == 'Jordan Verse' ~ 'Jared Verse',
+          x == 'Tank Dell' ~ 'Nathaniel Dell',
+          x == "Michael Schmitz" ~ "John Michael Schmitz",
+          x == "To'o To'o" ~ "Henry To'o To'o",
+          x == "Cyrus O'Torrence" ~ "O'Cyrus Torrence",
+          x == 'J.K. Skinner' ~ 'J.L. Skinner',
+          x == 'Jahymr Gibbs' ~ 'Jahmyr Gibbs',
+          x == "O'Cyrus Torrance" ~ "O'Cyrus Torrence",
+          x == 'Julian Brents' ~ 'Julius Brents',
+          x == 'Ty Scott' ~ 'Tyrone Scott',
+          x == 'Garrett Greenfield' ~ 'Garret Greenfield',
+          x == 'Henry Bainvalu' ~ 'Henry Bainivalu',
+          x == 'Quinten Johnston' ~ 'Quentin Johnston',
+          x == 'Isiah Foskey' ~ 'Isaiah Foskey',
+          x == 'Habakuk Baldonado' ~ 'Habakkuk Baldonado',
+          x == 'Yaya Diaby' ~ 'YaYa Diaby',
+          x == 'Rezjohn Wright' ~ 'Rejzohn Wright',
+          x == 'Nathaniel Tank Dell' ~ 'Nathaniel Dell',
+          x == "Tre'Vius Hedges-Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Peter Skloronski' ~ 'Peter Skoronski',
+          x == 'Gervin Dexter' ~ 'Gervon Dexter',
+          x == 'Bryan Branch' ~ 'Brian Branch',
+          x == 'Jaxon Smithnjigba' ~ 'Jaxon Smith-Njigba',
+          x == "O'cyrus Torrance" ~ "O'Cyrus Torrence",
+          x == 'Joe Tippman' ~ 'Joe Tippmann',
+          x == 'Zach Kuntz' ~ 'Zack Kuntz',
+          x == 'Ereck Ali' ~ 'Erick All',
+          x == 'Ereck All' ~ 'Erick All',
+          x == 'Tomi Adebawore' ~ 'Adetomiwa Adebawore',
+          x == 'Olu Fashanu' ~ 'Olumuyiwa Fashanu',
+          x == 'Sikai Ika' ~ 'Siaki Ika',
+          x ==  'Jalen Moreno-Cropper' ~ 'Jalen Cropper',
+          x == 'Brant Kuite' ~ 'Brant Kuithe',
+          x == 'Jalen McMillian' ~ 'Jalen McMillan',
+          x %in% c('Julius Weschof', 'Julius Wischof') ~ 'Julius Welschof',
+          x == 'Shaka Hayward' ~ 'Shaka Heyward',
+          x == "Tre'vius Hodges" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Jaelyn Dyncan' ~ 'Jaelyn Duncan',
+          x == 'Peter Skoranski' ~ 'Peter Skoronski',
+          x == 'Felix Andudike-Ezomah' ~ 'Felix Anudike-Uzomah',
+          x == 'B.J.Ojulari' ~ 'B.J. Ojulari',
+          x == 'Bryan Bresse' ~ 'Bryan Bresee',
+          x == 'Beejay Williamson' ~ 'BeeJay Williamson',
+          x == 'Habukkuk Baldanad' ~ 'Habakkuk Baldonado',
+          x == 'Andrew Voorhees' ~ 'Andrew Vorhees',
+          x == 'Felix Anduike-Uzomah' ~ 'Felix Anudike-Uzomah',
+          x == 'Jalen McMcillian' ~ 'Jalen McMillan',
+          x == 'Jalen Jones' ~ 'Jaylon Jones',
+          x == 'Tanner McKie' ~ 'Tanner McKee',
+          x == 'MIchael Mayer' ~ 'Michael Mayer',
+          x == 'Julius Wischof' ~ 'Julius Welschof',
+          x == 'Villami Fehoko' ~ 'Viliami Fehoko',
+          x == 'Cam Brown' ~ 'Cameron Brown',
+          x == 'Devone Achane' ~ 'Devon Achane',
+          x == 'Cooper Bebe' ~ 'Cooper Beebe',
+          x == 'Demarco Hellams' ~ 'DeMarcco Hellams',
+          x == 'Habukkuk Baldanado' ~ 'Habakkuk Baldonado',
+          x == 'Keelee Ringo' ~ 'Kelee Ringo',
+          x == 'Jarret Patterson' ~ 'Jarrett Patterson',
+          x == 'C.J Stroud' ~ 'C.J. Stroud',
+          x == "Ja'von Hicks" ~ "Ja'Von Hicks",
+          x == 'C.j. Stroud' ~ 'C.J. Stroud',
+          x == 'Kevon Slovis' ~ 'Kedon Slovis',
+          x == 'Jaxson Smith-Njagba' ~ 'Jaxon Smith-Njigba',
+          x == 'Jaxon Smith-Njiba' ~ 'Jaxon Smith-Njigba',
+          x == 'Derrick Hall' ~ 'Derick Hall',
+          x == 'Jaxon Smith' ~ 'Jaxon Smith-Njigba',
+          x == 'Will Rodgers' ~ 'Will Rogers',
+          x == 'Tui Tuipulotu' ~ 'Tuli Tuipulotu',
+          x == "Tre'vius Hodges-Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+          x == 'Habakkuk Baldanado' ~ 'Habakkuk Baldonado',
+          x == 'Trent Simpson' ~ 'Trenton Simpson',
+          x == "Henry To' To'o" ~ "Henry To'o To'o",
+          x == 'Cam Ward' ~ 'Cameron Ward',
+          x == "Mohamed Diabate" ~ "Mohamoud Diabate",
+          x == "Lukas Van" ~ "Lukas Van Ness",
+          x == "Nesta Jade" ~ "Nesta Jade Silvera",
+          x == "Sedrick Van" ~ "Sedrick Van Pran",
+          x == "Jacquelin Roy" ~ "Jaquelin Roy",
+          x == 'Kayson Boutte' ~ 'Kayshon Boutte',
+          x == 'C.J Stroud' ~ 'C.J. Stroud',
+          x == 'Pete Skoronski' ~ 'Peter Skoronski',
+          x == 'Luke Wypier' ~ 'Luke Wypler',
+          x == 'Keytoan Thompson' ~ 'Keytaon Thompson',
+          x == 'Blake Freelund' ~ 'Blake Freeland',
+          x == 'Justin Skinner' ~ 'J.L. Skinner',
+          x == 'will Anderson' ~ 'Will Anderson',
+          x == 'Sedrick Van Pan' ~ 'Sedrick Van Pran',
+          x == 'Cj Stroud' ~ 'C.J. Stroud',
+          x == 'Elias Ricks' ~ 'Eli Ricks',
+          x == 'will Levis' ~ 'Will Levis',
+          # x == 'Jaret Patterson' ~ 'Jarrett Patterson',
+          x == 'Fabian Lovett' ~ 'Fabien Lovett',
+          x == 'Bj Ojulari' ~ 'B.J. Ojulari',
+          x == 'Van Dyke' ~ 'Tyler Van Dyke',
+          x == 'Tanner Mckee' ~ 'Tanner McKee',
+          x == 'Zion Tupuola-Fetu' ~ 'Zion Tupuola-Fetui',
+          x == 'Bryan Breese' ~ 'Bryan Bresee',
+          x == 'Bryan Brese' ~ 'Bryan Bresee',
+          x == 'Bjian Robinson' ~ 'Bijan Robinson',
+          x == 'Brian Bresee' ~ 'Bryan Bresee',
+          x == 'Latham Ransom' ~ 'Lathan Ransom',
+          x == 'Eli Hicks' ~ 'Eli Ricks',
+          x == 'Kalee Ringo' ~ 'Kelee Ringo',
+          x == 'Quentin Johnson' ~ 'Quentin Johnston',
+          x == 'Habukkuk Baldonado' ~ 'Habakkuk Baldonado',
+          x == 'Tyler Van' ~ 'Tyler Van Dyke',
+          x == 'D.J. Uiagaelei' ~ 'D.J. Uiagalelei',
+          x == 'Derek Hall' ~ 'Derick Hall',
+          x == 'B.J. Olulari' ~ 'B.J. Ojulari',
+          x == 'Jaxson Smith-Njigba' ~ 'Jaxon Smith-Njigba',
+          x == 'Michael Meyer' ~ 'Michael Mayer',
+          x == "De'Von Achane" ~ "Devon Achane",
+          x == 'JuJu Brents' ~ "Julius Brents",
+          x == 'Robert Haskins' ~ 'Bobby Haskins',
+          x == 'Gabriel Houy' ~ 'Gabe Houy',
+          x == 'A.J. Uzodinma' ~ 'Amechi Uzodinma',
+          x == 'Ace Eley' ~ 'Ayinde Eley',
+          x == 'Phil Paea' ~ 'Phillip Paea',
+          x == 'Chris Brooks' ~ 'Christopher Brooks',
+          TRUE ~ x
+        ),
+        ifelse(
+          year == 2022,
+          case_when(
+            x == "Ikem Ekwomu" ~ 'Ikem Ekwonu',
+            x == 'MarQuan McCall' ~ 'Marquan McCall',
+            x == 'Charlie Cross' ~ 'Charles Cross',
+            x == 'Otito Uwazurike' ~ 'Otito Ogbonnia',
+            x == 'Kolby Harvell' ~ 'Kolby Harvell-Peel',
+            x == 'Jaylen Watkins' ~ 'Jaylen Watson',
+            x == 'Keynon Green' ~ 'Kenyon Green',
+            x == 'Brian Asomoah' ~ 'Brian Asamoah',
+            x == 'Joah Paschal' ~ 'Josh Paschal',
+            x == 'Charlston Rambo' ~ 'Charleston Rambo',
+            x == 'Isaac Taylor' ~ 'Isaac Taylor-Stuart',
+            x == 'Dan Bellinger' ~ 'Daniel Bellinger',
+            x == 'Jaylen Armour' ~ 'Jalyn Armour-Davis',
+            x == 'Danny Graham' ~ 'Danny Gray',
+            x == 'Matt Corrall' ~ 'Matt Corral',
+            x == 'Evan Neil' ~ 'Evan Neal',
+            x == 'WanDale Robinson' ~ "Wan'Dale Robinson",
+            x == "DaiJean Dixon" ~ "Dai'Jean Dixon",
+            x == 'Zach Thomas' ~ 'Zachary Thomas',
+            x == "Tre' Williams" ~ "Tre Williams",
+            x == 'Mike Woods' ~ 'Michael Woods',
+            x == 'DeMarcus Fields' ~ 'Damarcus Fields',
+            x == 'Roger Mccreary' ~ 'Roger McCreary',
+            x == 'Trey Mcbride' ~ 'Trey McBride',
+            x == 'Zyon Mccollum' ~ 'Zyon McCollum',
+            x == 'Demarvin Leal' ~ 'DeMarvin Leal',
+            x == 'Trent Mcduffie' ~ 'Trent McDuffie',
+            x == 'Devin Llyod' ~ 'Devin Lloyd',
+            x == 'Jaylen Washington' ~ 'Jaylen Watson',
+            x == 'Demarri Mathis' ~ 'Damarri Mathis',
+            x == 'Mile Harley' ~ 'Mike Harley',
+            x == 'Josh Williams - Fayetteville State' ~ 'Joshua Williams',
+            x == 'OL Ickey' ~ 'Ikem Ekwonu',
+            x == 'CB Zyon' ~ 'Zyon McCollum',
+            x == 'Trey Andersen' ~ 'Troy Andersen',
+            # x == 'Isiah Pacheco' ~ 'Isaih Pacheco',
+            x == 'Joshua Jobe' ~ 'Josh Jobe',
+            x == 'Davontavean Martin' ~ 'Tay Martin',
+            x == 'Devontae Wyatt' ~ 'Devonte Wyatt',
+            x == 'Cam Taylor' ~ 'Cam Taylor-Britt',
+            x == 'Dohnavon West' ~ 'Dohnovan West',
+            x == 'Samuel Webb' ~ 'Sam Webb',
+            x == 'Jalen Wydemyer' ~ 'Jalen Wydermyer',
+            x == 'Tyquan Thronton' ~ 'Tyquan Thornton',
+            x == 'Ikem Ekwnou' ~ 'Ikem Ekwonu',
+            x == 'Mailk Wilis' ~ 'Malik Willis',
+            x == 'Devontate Wyatt' ~ 'Devonte Wyatt',
+            x == 'M.J. Emerson' ~ 'Martin Emerson',
+            x == 'Kenny Walker' ~ 'Kenneth Walker',
+            x == 'Joshua Paschal' ~ 'Josh Paschal',
+            x == 'Matt Henninhsen' ~ 'Matt Henningsen',
+            x == 'Verne McKinley' ~ 'Verone McKinley',
+            x == 'Verone Mckinley' ~ 'Verone McKinley',
+            x == 'Cole Rutner' ~ 'Cole Turner',
+            x == 'Chig Okonkwo' ~ 'Chigoziem Okonkwo',
+            x == 'Aiden Hutchinson' ~ 'Aidan Hutchinson',
+            x == "Amare' Barno" ~ 'Amare Barno',
+            x == 'Ike Ekwonu' ~ 'Ikem Ekwonu',
+            x == 'Kayon Thibodeaux' ~ 'Kayvon Thibodeaux',
+            x == 'Kavon Thibodeaux' ~ 'Kayvon Thibodeaux',
+            x == 'Kayvon Thibodaux' ~ 'Kayvon Thibodeaux',
+            x == 'David Ojobo' ~ 'David Ojabo',
+            x == 'Spencer Buford' ~ 'Spencer Burford',
+            x == 'Phil Mathis' ~ 'Phidarian Mathis',
+            x == 'Ken Walker' ~ 'Kenneth Walker',
+            x == 'Aidan Hutchison' ~ 'Aidan Hutchinson',
+            x == 'Eric Ezukanma' ~ 'Erik Ezukanma',
+            x == 'Demarvin Leal' ~ 'DeMarvin Leal',
+            x == "Isaiah Pola-Moa" ~ 'Isaiah Pola-Mao',
+            x == 'Bam Knight' ~ 'Zonovan Knight',
+            x == 'Zion Tupula' ~ 'Zion Tupuola-Fetui',
+            x == 'George Karalaftis' ~ 'George Karlaftis',
+            x == 'Zyon McCullom' ~ 'Zyon McCollum',
+            x == 'Chigoziem Okokowo' ~ 'Chigoziem Okonkowo',
+            x == 'David Obajo' ~ 'David Ojabo',
+            x == 'Trent Mc' ~ 'Trent McDuffie',
+            x == 'Roger Mc' ~ 'Roger McCreary',
+            x == 'Trey Mc' ~ 'Trey McBride',
+            x == 'Tre McBride' ~ 'Trey McBride',
+            x == 'Tre Mcbride' ~ 'Trey McBride',
+            x == 'Devon Lloyd' ~ 'Devin Lloyd',
+            x == 'Jamree Salyer' ~ 'Jamaree Salyer',
+            x == 'Alex Lindstrom' ~ 'Alec Lindstrom',
+            x == 'Deangelo Malone' ~ 'DeAngelo Malone',
+            x == 'Verone Mc' ~ 'Verone McKinley',
+            x == 'Arnold Ebeketie' ~ 'Arnold Ebiketie',
+            x == 'Garret Wilson' ~ 'Garrett Wilson',
+            x == 'Zyon Mc' ~ 'Zyon McCollum',
+            x == 'Marcus Mc' ~ 'Marcus McKethan',
+            x == 'Javion Helligh' ~ 'Jaivon Heiligh',
+            x == 'Tariq Castro' ~ 'Tariq Castro-Fields',
+            x == 'Jojo Domann' ~ 'JoJo Domann',
+            x == 'JoJo Doman' ~ 'JoJo Domann',
+            x == 'Decobie Durant' ~ 'Cobie Durant',
+            # x == 'Jake Hanson' ~ 'Jake Hansen',
+            x == 'Derek Stingely' ~ 'Derek Stingley',
+            x == 'Noah Eliss' ~ 'Noah Elliss',
+            x == "Steward Reese" ~ "Stewart Reese",
+            x == 'Cordell Volston' ~ 'Cordell Volson',
+            x == 'Sean Ryhan' ~ 'Sean Rhyan',
+            x == 'Sean Rhyman' ~ 'Sean Rhyan',
+            x == 'Steward Reese' ~ 'Stewart Reese',
+            x == 'Jalen Wydermyder' ~ 'Jalen Wydermyer',
+            x == 'DaMarri Mathis' ~ 'Damarri Mathis',
+            x == 'Tyler Linerbaum' ~ "Tyler Linderbaum",
+            x == 'Desmond Ritter' ~ 'Desmond Ridder',
+            x == 'Joey Blunt' ~ 'Joey Blount',
+            x == 'Derek Deese' ~ 'Derrick Deese',
+            x == 'Skyler Thompson' ~ 'Skylar Thompson',
+            x == 'Noah Ellis' ~ 'Noah Elliss',
+            x == 'Otto Ogbonnia' ~ 'Otito Ogbonnia',
+            x == 'Otito Obgonnia' ~ 'Otito Ogbonnia',
+            x == 'Sean Ryan' ~ 'Sean Rhyan',
+            x == 'Nick Zakelijk' ~ 'Nick Zakelj',
+            x == 'Hassan Hankins' ~ 'Hassan Haskins',
+            x == 'Barnhard Raimann' ~ 'Bernhard Raimann',
+            x == 'Yusef Corker' ~ 'Yusuf Corker',
+            x == 'Jaquari Roberson' ~ 'Jaquarii Roberson',
+            x == 'Kellen Deisch' ~ 'Kellen Diesch',
+            x == "Ja'Quan McMillan" ~ "Ja'Quan McMillian",
+            x == 'Trylon Burks' ~ 'Treylon Burks',
+            x == 'Lujii Vilain' ~ 'Luiji Vilain',
+            x == 'Tarquios Tisdale' ~ 'Tariqious Tisdale',
+            x == 'Ty Allegier' ~ 'Tyler Allgeier',
+            x == 'Veteran Lowe' ~ 'Vederian Lowe',
+            x == 'Reggie Robertson' ~ 'Reggie Roberson',
+            x == 'Eric Williams' ~ 'Eric Johnson',
+            x == 'Daron Bland' ~ 'DaRon Bland',
+            x == 'Chris Oladuokun' ~ 'Chris Oladokun',
+            x == "Wan'dale Robinson" ~ "Wan'Dale Robinson",
+            x == 'Ezezi Otomewo' ~ 'Esezi Otomewo',
+            x == 'Shemari Jones' ~ 'Shermari Jones',
+            x == 'Darian Butler' ~ 'Darien Butler',
+            x == 'Yusur Corker' ~ 'Yusuf Corker',
+            x == 'Quan White' ~ 'ZaQuandre White',
+            x == 'Kayvon Thibodaeux' ~ 'Kayvon Thibodeaux',
+            x == 'Kayvon Thibodeau' ~ 'Kayvon Thibodeaux',
+            x == 'Ty Davis-Price' ~ 'Tyrion Davis-Price',
+            x == "Ikem 'Ickey'" ~ "Ikem Ekwonu",
+            x == 'Sauce Garnder' ~ "Ahmad Gardner",
+            x == 'Tyland Humphrey' ~ 'Tayland Humphrey',
+            x == 'Kaylon Barnes' ~ 'Kalon Barnes',
+            x == "Bai'Jean Dixon" ~ "Dai'Jean Dixon",
+            x == 'Jayden Peevyn' ~ 'Jayden Peevy',
+            x == 'Tycenn Anderson' ~ 'Tycen Anderson',
+            x == 'Isaiah Tomas' ~ 'Isaiah Thomas',
+            x == 'Jaquon Brisker' ~ 'Jaquan Brisker',
+            x == "Ahma 'Sauce'" ~ "Ahmad Gardner",
+            x == 'George Karlafitis' ~ 'George Karlaftis',
+            x == 'Tariq Caprenter' ~ 'Tariq Carpenter',
+            x == 'Darian Kennard' ~ 'Darian Kinnard',
+            x == 'Jalen Caralon' ~ 'Jalen Catalon',
+            x == 'Aiden Hutchinson' ~ 'Aidan Hutchinson',
+            x == 'Kayvon Thiboedaux' ~ 'Kayvon Thibodeaux',
+            x == 'Arnold Ebitekie' ~ 'Arnold Ebiketie',
+            x == 'Arnold Ebiteke' ~ 'Arnold Ebiketie',
+            x == "J'Atyre Carter" ~ "Ja'Tyre Carter",
+            x == 'Marquese Bell' ~ 'Markquese Bell',
+            x == 'Channing Tindale' ~ 'Channing Tindall',
+            x == 'John Michael' ~ 'John Michael Schmitz',
+            x == 'Josh Job' ~ 'Josh Jobe',
+            x == 'Khalil Shakur' ~ 'Khalil Shakir',
+            x == 'Tariq Wollen' ~ 'Tariq Woolen',
+            x == "EDGE Cameron" ~ "Cameron Thomas",
+            x == 'OL Ikem' ~ 'Ikem Ekwonu',
+            x == 'WR Christian' ~ 'Christian Watson',
+            x == 'Ikem Ekwonmu' ~ 'Ikem Ekwonu',
+            x == 'Andrew Steuber' ~ 'Andrew Stueber',
+            x == 'Devonte Watt' ~ 'Devonte Wyatt',
+            x == 'Dohnavan West' ~ 'Dohnovan West',
+            x == 'Kaiir Elamn' ~ 'Kaiir Elam',
+            x == 'Parrion Winfrey' ~ 'Perrion Winfrey',
+            x == 'Nick Petit-Frere' ~ 'Nicholas Petit-Frere',
+            x == 'Ickem Ekwonu' ~ 'Ikem Ekwonu',
+            x == 'David Ajabo' ~ 'David Ojabo',
+            x == 'Tyler Linderbau' ~ 'Tyler Linderbaum',
+            x == 'Myjai Sanderes' ~ 'Myjai Sanders',
+            x == 'Josh Williams' ~ 'Joshua Williams',
+            x == "Joshua Ross" ~ 'Josh Ross',
+            x == 'Michael Agude' ~ 'Michael Agude',
+            x == 'Ickey Ekwonu' ~ 'Ikem Ekwonu',
+            x == 'Myjaj Sanders' ~ 'Myjai Sanders',
+            x == 'Deangelo Malone' ~ 'DeAngelo Malone',
+            x == 'Troy Anderson' ~ 'Troy Andersen',
+            x == 'Jaxon Kirkland' ~ 'Jaxson Kirkland',
+            x == "Kaair Elam" ~ 'Kaiir Elam',
+            x == 'Jahan Doston' ~ 'Jahan Dotson',
+            x == 'Jahleel Bilingsley' ~ 'Jahleel Billingsley',
+            x == "Jalen Wynermyer" ~ "Jalen Wydermyer",
+            x == 'Trent Mcduffie' ~ 'Trent McDuffie',
+            x == 'Bryan Asamoah' ~ 'Brian Asamoah',
+            x == 'Darian Beavers' ~ 'Darrian Beavers',
+            x == 'Jayln Armour-Davis' ~ 'Jalyn Armour-Davis',
+            x == 'Nick Bonnito' ~ 'Nik Bonnito',
+            x == 'Nik Bonnitto' ~ 'Nik Bonnito',
+            x == 'Malcolm Rodriquez' ~ 'Malcolm Rodriguez',
+            x == "Henry To'oTo'o" ~ "Henry To'o To'o",
+            x == 'Cameron Taylor-Britt' ~ 'Cam Taylor-Britt',
+            x == "Da'Ron Payne" ~ 'Daron Payne',
+            x == 'Rodger McCreary' ~ 'Roger McCreary',
+            x == 'Joshua Jackson' ~ 'Josh Jackson',
+            x == 'Wil McDonald' ~ 'Will McDonald',
+            x == 'Sean Bunting' ~ 'Sean Murphy-Bunting',
+            x == 'Lamical Perine' ~ "La'Mical Perine",
+            x == 'Roger Mcreary' ~ 'Roger McCreary',
+            x == 'Jake Carmarda' ~ 'Jake Camarda',
+            x == 'Chris Allen' ~ 'Christopher Allen',
+            x == 'Thayor Munford' ~ 'Thayer Munford',
+            # x == "Malik Harris" ~ "Malik Willis",
+            x == 'Gary Dulcich' ~ 'Greg Dulcich',
+            x == 'Arnold Ebikete' ~ 'Arnold Ebiketie',
+            x == "Ahmad 'Sauce'" ~ "Ahmad Gardner",
+            x == 'Jermaine Walker' ~ 'Jermaine Waller',
+            x == 'Zaquandre White' ~ 'ZaQuandre White',
+            x == "Za'Quandre White" ~ 'ZaQuandre White',
+            x == 'CorDale Flott' ~ 'Cordale Flott',
+            x == 'Nicholes Petit-Frere' ~ 'Nicholas Petit-Frere',
+            x == 'James Salski' ~ 'James Skalski',
+            x == 'Obbina Eze' ~ 'Obinna Eze',
+            x == 'Zach Carter' ~ 'Zachary Carter',
+            x == 'Cam Thomas' ~ 'Cameron Thomas',
+            x == 'Dax Hill' ~ 'Daxton Hill',
+            x == 'Kuoy Deng' ~ 'Kuony Deng',
+            x == 'Ikem Okwonu' ~ 'Ikem Ekwonu',
+            x == 'Keontay Ingram' ~  'Keaontay Ingram',
+            x == 'Tariquios Tisdale' ~ 'Tariqious Tisdale',
+            x == "D'vonte Price" ~ "D'Vonte Price",
+            x == 'Ahmad Sauce' ~ 'Ahmad Gardner',
+            x == 'Nicholas Petit' ~ 'Nicholas Petit-Frere',
+            x == 'Ahmad âSauceâ Gardner' ~ 'Ahmad Gardner',
+            x == 'Sauce Gardner' ~ 'Ahmad Gardner',
+            x == 'Ahmad Sauce Gardner' ~ 'Ahmad Gardner',
+            x == 'Ahmad âSauceâ Gardner' ~ 'Ahmad Gardner',
+            x == "Ahmad 'Sauce' Gardner" ~ 'Ahmad Gardner',
+            x == 'Ahmad "Sauce" Gardner' ~ 'Ahmad Gardner',
+            x == 'Christopher Hinton' ~ 'Chris Hinton',
+            x == 'Big Kat' ~ 'Big Kat Bryant',
+            x == "DeAngeo Malone" ~ "DeAngelo Malone",
+            x == 'Derek Stingley CB' ~ 'Derek Stingley',
+            x == 'Christopher Rodriguez' ~ 'Chris Rodriguez',
+            x == "George Karlafits" ~ 'George Karlaftis',
+            x == "Kair Elam" ~ "Kaiir Elam",
+            x == "Nesta Jade" ~ "Nesta Jade Silvera",
+            x == "Darian Dalcourt" ~ "Darrian Dalcourt",
+            x == "Darnell Jeffries" ~ "Darnell Jefferies",
+            x == "Justin Egoigbe" ~ "Justin Eboigbe",
+            x == "J.T. Daniel" ~ "J.T. Daniels",
+            x == 'Thayor Munford' ~ "Thayer Munford",
+            x == "Demarvin Leal" ~ "DeMarvin Leal",
+            x == "DeMarvin Neal" ~ "DeMarvin Leal",
+            x == 'Leon Chenal' ~ 'Leo Chenal',
+            x == "Jaquarii Robertson" ~ "Jaquarii Roberson",
+            x == 'Cameron Jurgens' ~ 'Cam Jurgens',
+            x == 'Jojo Domann' ~ 'Jojo Domann',
+            x == 'David Ojaba' ~ 'David Ojabo',
+            x == 'Jaylen Cropper' ~ 'Jalen Cropper',
+            x == "Isacc Slade-Matautia" ~ 'Isaac Slade-Matautia',
+            x == "Henry To'o To'o" ~ "Henry To'o To'o",
+            x == "Tre'vius Hodges-Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+            x == "Tre'Vious Hodges-Tomlinson" ~ "Tre'Vius Hodges-Tomlinson",
+            x == "Henry To'o-To'o" ~ "Henry To'o To'o",
+            x == "Henry To'oto'o" ~ "Henry To'o To'o",
+            x == "Henry To'oto'o" ~ "Henry To'o To'o",
+            x == "Henry To'oto'o" ~ "Henry To'o To'o",
+            x == "Henry To'oto'o" ~ "Henry To'o To'o",
+            x == "Henry To'o" ~ "Henry To'o To'o",
+            x == 'ROGER MCCREARY' ~ 'Roger McCreary',
+            x == 'Cade Otten' ~ 'Cade Otton',
+            x == 'Roger Mccreary' ~ 'Roger McCreary',
+            x == 'Demarvion Overshown' ~ 'DeMarvion Overshown',
+            x == "Demarvioun Overshown" ~ 'DeMarvion Overshown',
+            x == "Terrell Bernard" ~ "Terrel Bernard",
+            x == 'Koby Harvell-Peel' ~ 'Kolby Harvell-Peel',
+            x == 'Nikolas Bonitto' ~ 'Nik Bonitto',
+            x == 'Nick Bonitto' ~ 'Nik Bonitto',
+            x == "Damari Mathis" ~ 'Damarri Mathis',
+            x == 'Nik Bonnito' ~ 'Nik Bonitto',
+            x == 'J.J. Enagbare' ~ 'Kingsley Enagbare',
+            x == "Sam La Porta" ~ "Sam LaPorta",
+            x == 'Kingsley Engabare' ~ 'Kingsley Enagbare',
+            x == 'Michael Clemons' ~ 'Micheal Clemons',
+            x == "AmarÃ© Barno" ~ "Amare Burno",
+            x == 'AmarÃÂ© Barno' ~ 'Amare Barno',
+            x == "Matt Coral" ~ "Matt Corral",
+            x == "Obinna Eza" ~ "Obinna Eze",
+            x == 'DeVonte Wyatt' ~ 'Devonte Wyatt',
+            x == 'Bernard Raimann' ~ 'Bernhard Raimann',
+            x == "Ikem Ekonwu" ~ "Ikem Ekwonu",
+            x == "Phil Jurkovic" ~ 'Phil Jurkovec',
+            x == "Tyler Lindenbaum" ~ "Tyler Linderbaum",
+            x == 'Matt Bedford' ~ 'Matthew Bedford',
+            x == 'Micale Cunningham' ~ 'Malik Cunningham',
+            x == 'Zion Typyola-Fetui' ~ 'Zion Tupuola-Fetui',
+            x == 'Bernhard Raimman' ~ 'Bernhard Raimann',
+            x == 'Al Blade' ~ 'Al Blades',
+            x == 'Kyu Blu' ~ 'Kyu Blu Kelly',
+            x == "Liam Shannahan" ~ "Liam Shanahan",
+            x == 'Darrian Kinnard' ~ 'Darian Kinnard',
+            x == "Luke Wattenburg" ~ "Luke Wattenberg",
+            x == 'Trey McBridge' ~ 'Trey McBride',
+            x == 'Marquis Haynes' ~ 'Marquis Hayes',
+            x == 'Matthew Beford' ~ 'Matthew Bedford',
+            x == 'Rasheed Waker' ~ 'Rasheed Walker',
+            x == "Kinglsey Enagbare" ~ "Kingsley Enagbare",
+            x == "Kingsley Engbare" ~ "Kingsley Enagbare",
+            x == "Derrion Kendrick" ~ "Derion Kendrick",
+            x == "Myaji Sanders" ~ "Myjai Sanders",
+            x == 'Tyler Lindebaum' ~ 'Tyler Linderbaum',
+            x == 'Mike Tafua' ~ 'Mika Tafua',
+            x == "Ryan Van" ~ 'Ryan Van Demark',
+            x == 'Demarvioun Overshown' ~ 'DeMarvion Overshown',
+            x == 'Eyabi Okie' ~ 'Eyabi Okie-Anoma',
+            x == 'Ezekiel M. Daure' ~ 'Michael Daure',
+            x == 'Jeff Gunter' ~ 'Jeffrey Gunter',
+            x == "Cor'Dale Flott" ~ "Cordale Flott",
+            x == 'Dre Miller' ~ 'Andre Miller',
+            x == "Xavier Newman" ~ "Xavier Newman-Johnson",
+            x == 'Josh Onujiogu' ~ 'Joshua Onujiogu',
+            x == 'Kam Butler' ~ "Kameron Butler",
+            x == 'A.J. Uzodinma' ~ 'Amechi Uzodinma',
+            TRUE ~ x
+          ),
+          ifelse(
+            year == 2021,
+            case_when(
+              x == 'Benjamin St.' ~ 'Benjamin St-Juste',
+              x == 'Boogie Basham' ~ 'Carlos Basham',
+              x == 'Cmaeron McGrone' ~ 'Cameron McGrone',
+              x == 'Justin HIlliard' ~ 'Justin Hilliard',
+              x == 'Jonathan Cooper' ~ 'Jonathon Cooper',
+              x == 'Josh Imatorbhbhe' ~ 'Josh Imatorbhebhe',
+              x == 'Talanoa Hufanaga' ~ 'Talanoa Hufanga',
+              x == 'Christan Darrisaw' ~ 'Christian Darrisaw',
+              # x == 'Armani Rogers' ~ 'Amani Rodgers',
+              x == 'Deommodre Lenoir' ~ 'Deommodore Lenoir',
+              x == "Tre'von Moehrig" ~ 'Trevon Moehrig',
+              x == "Shemar Jean Charles" ~ 'Shemar Jean-Charles',
+              x == 'Mike Stratchan' ~ 'Mike Strachan',
+              x == 'Dillon Raduntz' ~ 'Dillon Radunz',
+              x == "Cam McGrone" ~ 'Cameron McGrone',
+              x == "Tevon Grimes" ~ "Trevon Grimes",
+              x == "D'wayne Eskridge" ~ "D'Wayne Eskridge",
+              x == 'Najeh Harris' ~ 'Najee Harris',
+              x == "JayCee Horn" ~ "Jaycee Horn",
+              x == 'Racy McMath' ~ 'Racey McMath',
+              x == 'Cam Sample' ~ 'Cameron Sample',
+              x == "Micha Parsons" ~ "Micah Parsons",
+              x == 'Stone Forsyth' ~ 'Stone Forsythe',
+              x == 'Richard Lecounte' ~ 'Richard LeCounte',
+              x == 'Rhomandre Stevenson' ~ 'Rhamondre Stevenson',
+              x == "Christian Warrisaw" ~ "Christian Darrisaw",
+              x == 'Wyatt Huber' ~ 'Wyatt Hubert',
+              x == "Travis Etinne" ~ "Travis Etienne",
+              x == "Christian Darrishaw" ~ "Christian Darrisaw",
+              x == "Peyton Turner" ~ "Payton Turner",
+              x == "Victor Dimukeji" ~ "Victor Dimukeje",
+              x == 'Jack Morrissey' ~ 'Jimmy Morrissey',
+              x == "Ra'Shawn Slater" ~ "Rashawn Slater",
+              x == "Darrick Forest" ~ "Darrick Forrest",
+              x == "Penei Swell" ~ "Penei Sewell",
+              x == "Kenneeth Gainwell" ~ "Kenneth Gainwell",
+              x == "Kevin Joseph" ~ "Kelvin Joseph",
+              x == "Tre Smith" ~ "Trey Smith",
+              x == "Deyo Odeyingbo" ~ "Dayo Odeyingbo",
+              x == "Christian Darrishaw" ~ "Christian Darrisaw",
+              x == "Joseph Assai" ~ "Joseph Ossai",
+              x == "Brenden James" ~ "Brenden Jaimes",
+              x == "Hamsah Nasrildeen" ~ "Hamsah Nasirildeen",
+              x == "Israel Mukuwamu" ~ "Israel Mukuamu",
+              x == "Jasmin Davis" ~ "Jamin Davis",
+              x == "Osa Odighizua" ~ 'Osa Odighizuwa',
+              x == "Daelan Hayes" ~ "Daelin Hayes",
+              x == "Adetokkunbo Ogundeji" ~ "Adetokunbo Ogundeji",
+              x == "Zach McPhearson" ~ "Zech McPhearson",
+              x == "Alijah Veer Tucker" ~ "Alijah Vera-Tucker",
+              x == "Tyrie Gillespie" ~ "Tyree Gillespie",
+              x == "Dez Fitpatrick" ~ "Dez Fitzpatrick",
+              x == 'Trevor Moehrig' ~ 'Trevon Moehrig',
+              x == "Kene Nwangnu" ~ "Kene Nwangwu",
+              x == "Levi Onruzuike" ~ "Levi Onwuzurike",
+              x == "Ar'darius Washington" ~ "Ar'Darius Washington",
+              x == 'Josh Kaindoh' ~ 'Joshua Kaindoh',
+              x == 'Tederrall Slaton' ~ 'Tedarrell Slaton',
+              x == 'Jeremiah Owusu Koramoah' ~ 'Jeremiah Owusu-Koramoah',
+              x == "D'Wayne Eskiridge" ~ "D'Wayne Eskridge",
+              x == 'Nashon Wright' ~ 'Nahshon Wright',
+              x == "Ka'Darius Toney" ~ "Kadarius Toney",
+              x == "Javante Williams" ~ "Javonte Williams",
+              x == 'Michael Stratchan' ~ 'Mike Stratchan',
+              x == 'Alijah Vera Tucker' ~ 'Alijah-Vera Tucker',
+              x == "Oga Odighizuwa" ~ "Osa Odighizuwa",
+              x == 'Erick Stokes' ~ 'Eric Stokes',
+              x == 'Benjamin St. Jude' ~ 'Benjamin St-Juste',
+              x == 'Michael Strachan' ~ 'Mike Strachan',
+              x == 'Jabrill Cox' ~ 'Jabril Cox',
+              x == 'Kwity Payne' ~ 'Kwity Paye',
+              x == 'Quinton Morris' ~ 'Quintin Morris',
+              x == 'Rashed Hamilcar' ~ 'Hamilcar Rashed',
+              x == 'Brandon Echols' ~ 'Brandin Echols',
+              x == 'Trevon Moehig' ~ 'Trevon Moehrig',
+              x == 'Cam Bynum' ~ 'Camryn Bynum',
+              x == 'Dayo Odenyigbo' ~ 'Dayo Odeyingbo',
+              x == 'Ellerson Smith' ~ 'Elerson Smith',
+              x == 'Osirius Mitchell' ~ 'Osirus Mitchell',
+              x == 'Earnest Jones' ~ 'Ernest Jones',
+              # x == 'Jarret Patterson' ~ 'Jaret Patterson',
+              x == 'Johnathan Marshall' ~ 'Jonathan Marshall',
+              x == 'Adentokunbo Ogundeji' ~ 'Adetokunbo Ogundeji',
+              x == 'DeVonte Smith' ~ 'DeVonta Smith',
+              x == 'Isreal Mukuamu' ~ 'Israel Mukuamu',
+              x == 'Dillion Radunz' ~ 'Dillon Radunz',
+              x == 'Quinn Menerz' ~ 'Quinn Meinerz',
+              x == 'Rhiamondre Stevenson' ~ 'Rhamondre Stevenson',
+              x == 'Kyle Granson' ~ 'Kylen Granson',
+              x == 'Kadius Toney' ~ 'Kadarius Toney',
+              x == 'Caden Stearns' ~ 'Caden Sterns',
+              x == 'Justin Holland' ~ 'Jevon Holland',
+              x == 'Javonte Wililams' ~ 'Javonte Williams',
+              x == 'Jeremiah Owusu-Karamoah' ~ 'Jeremiah Owusu-Koramoah',
+              x == 'Jalen Twyman' ~ 'Jaylen Twyman',
+              x == 'Brendon Stephens' ~ 'Brandon Stephens',
+              x == 'Taquon Graham' ~ "Ta'Quon Graham",
+              x == 'Pete Wener' ~ 'Pete Werner',
+              x == 'Jamis Davis' ~ 'Jamin Davis',
+              x == 'Pat Freirmuth' ~ 'Pat Freiermuth',
+              x == 'Azezz Ojulari' ~ 'Azeez Ojulari',
+              x == 'Kardarius Toney' ~ 'Kadarius Toney',
+              x == 'Liam Eichenburg' ~ 'Liam Eichenberg',
+              x == 'Gregory Newsome II' ~ 'Gregory Newsome',
+              x == 'Gregory Rosseau' ~ 'Gregory Rousseau',
+              x == 'Isaiah Loudermilk' ~ 'Isaiahh Loudermilk',
+              x == 'Trevin Jenkins' ~ 'Teven Jenkins',
+              x == 'Traivs Etienne' ~ 'Travis Etienne',
+              x == 'Joe Tyron' ~ 'Joe Tryon-Shoyinka',
+              x == 'Pat Freiermuith' ~ 'Pat Freirmuth',
+              x == 'Marlon Tuipuloto' ~ 'Marlon Tuipulotu',
+              x == 'OT Penei Sewell' ~ "Penei Sewell",
+              x == 'Devonta Smith' ~ 'DeVonta Smith',
+              x == 'Trevon Moherig' ~ 'Trevon Moehrig',
+              x == 'Dayvion Nixon' ~ 'Daviyon Nixon',
+              x == 'Jaelen Phillips' ~ 'Jaelan Phillips',
+              x == 'JaMarr Chase' ~ "Ja'Marr Chase",
+              x == 'Alijiah Vera-Tucker' ~ 'Alijah Vera-Tucker',
+              x == "ArâDarius Washington" ~ "Ar'Darius Washington",
+              x == 'Trevon Moehrig-Woodward' ~ "Trevon Moehrig",
+              x == 'Trevon Moehrig-Woodard' ~ 'Trevon Moehrig',
+              x == "Hamlicar Rashed" ~ 'Hamilcar Rashed',
+              x == "Ar'Daius Washington" ~ "Ar'Darius Washington",
+              x == 'Jaylen Mayfield' ~ "Jalen Mayfield",
+              x == "Kenny Gainwell" ~ "Kenneth Gainwell",
+              x == 'Azeez Olujari' ~ 'Azeez Ojulari',
+              x == 'Cameron Mcgrone' ~ 'Cameron McGrone',
+              x == 'Zac Wilson' ~ 'Zach Wilson',
+              x == 'Quentin Morris' ~ 'Quintin Morris',
+              x == 'Zack Wilson' ~ 'Zach Wilson',
+              x == 'Matt Duffy' ~ 'Max Duffy',
+              x == 'Carlos Bashman' ~ 'Carlos Basham',
+              x == 'Jaelin Phillips' ~ 'Jaelan Phillips',
+              x == 'Shane Buchele' ~ 'Shane Buechele',
+              x == 'John Marshall' ~ 'Jonathan Marshall',
+              x == 'Anthony Scwartz' ~ 'Anthony Schwartz',
+              x == 'Richie Grants' ~ 'Richie Grant',
+              x == 'Israel Mukawama' ~ 'Israel Mukuamu',
+              x == 'Az Ojulari' ~ 'Azeez Ojulari',
+              x == 'Levi Onwuzirike' ~ 'Levi Onwuzurike',
+              x == 'Stone Forysthe' ~ 'Stone Forsythe',
+              x == 'DaVonta Smith' ~ 'DeVonta Smith',
+              x == 'Daivyon Nixon' ~ 'Daviyon Nixon',
+              x == 'Jose Borregalas' ~ 'Jose Borregales',
+              x == 'Adetokungo Ogundeji' ~ 'Adetokunbo Ogundeji',
+              x == 'Cory Angeline' ~ 'Cary Angeline',
+              x == 'Talanola Hufanga' ~ 'Talanoa Hufanga',
+              x == 'Quin Meinerz' ~ 'Quinn Meinerz',
+              x == "Ar'Darious Washington" ~ "Ar'Darius Washington",
+              x == 'Divine Diablo' ~ 'Divine Deablo',
+              x == 'Hamilcar Reshad' ~ 'Hamilcar Rashed',
+              x == 'Jaelen Darden' ~ 'Jaelon Darden',
+              x == 'Janarius Robinnson' ~ 'Janarius Robinson',
+              x == 'Jimmy Morrisey' ~ 'Jimmy Morrissey',
+              x == 'Kelvin Jospeh' ~ 'Kelvin Joseph',
+              x == 'Payton Tuner' ~ 'Payton Turner',
+              x == 'Rhadmondre Stevenson' ~ 'Rhamondre Stevenson',
+              x == 'Dayo Odeyingo' ~ 'Dayo Odeyingbo',
+              x == 'Joshua Bledsoe' ~ 'Joshuah Bledsoe',
+              x == 'Felipe Franks' ~ 'Feleipe Franks',
+              x == 'Chaz Surratt' ~ 'Chazz Surratt',
+              x == 'Chazz Suratt' ~ 'Chazz Surratt',
+              x == 'Christian Baremore' ~ 'Christian Barmore',
+              x == 'Dayo Adeyingbo' ~ 'Dayo Odeyingbo',
+              x == 'Javon Holland' ~ 'Jevon Holland',
+              x == 'Javonte Willilams' ~ 'Javonte Williams',
+              x == 'Levi Onwuzrikie' ~ 'Levi Onwuzurike',
+              x == 'Tevon Jenkins' ~ 'Teven Jenkins',
+              x == 'Dayo Yodeyingbo' ~ 'Dayo Odeyingbo',
+              x == 'Jake Anderson' ~ 'Jack Anderson',
+              x == 'Michael Menet' ~ 'Michal Menet',
+              x == "Ja'Mar Chase" ~ "Ja'Marr Chase",
+              x == 'Jeremiah Owosu-Koramoah' ~ 'Jeremiah Owusu-Koramoah',
+              x == 'Terrance Marshall' ~ 'Terrace Marshall',
+              x == 'Sam Cosmi' ~ 'Samuel Cosmi',
+              x == 'Joesph Ossai' ~ 'Joseph Ossai',
+              x == 'Alija Vera-Tucker' ~ 'Alijah Vera-Tucker',
+              x == 'Alijah Vera' ~ 'Alijah Vera-Tucker',
+              x == 'Trevon Moehring-Woodard' ~ 'Trevon Moehrig',
+              x == 'Davyion Nixon' ~ 'Daviyon Nixon',
+              x == 'Kwitty Paye' ~ 'Kwity Paye',
+              x == 'Kwity Page' ~ 'Kwity Paye',
+              x == 'Micah Parson' ~ 'Micah Parsons',
+              x == 'Marlon Tupulotu' ~ 'Marlon Tuipulotu',
+              x == 'Marlon Tuipolotu' ~ 'Marlon Tuipulotu',
+              x == 'Pat Friermuth' ~ 'Pat Freiermuth',
+              x == 'Marques Stevenson' ~ 'Marquez Stevenson',
+              x == 'Chatarius Atwell' ~ 'Tutu Atwell',
+              x == 'Ade Ogundeji' ~ 'Adetokunbo Ogundeji',
+              x == 'Chubba Hubbard' ~ 'Chuba Hubbard',
+              x == 'Thayor Munford' ~ 'Thayer Munford',
+              x == 'Garrett Wallow' ~ 'Garret Wallow',
+              x == 'Amon-Ra St.' ~ 'Amon-Ra St. Brown',
+              x == 'Jacoby Stevens' ~ 'JaCoby Stevens',
+              x == 'Trevon MoehrigS' ~ 'Trevon Moehrig',
+              x == 'Trevon Moehring' ~ 'Trevon Moehrig',
+              x == 'Jackson Carmen' ~ 'Jackson Carman',
+              x == 'Rahmondre Stevenson' ~ 'Rhamondre Stevenson',
+              x == 'T.J. Slaton' ~ 'Tedarrell Slaton',
+              x == 'Tamorrian Terry' ~ 'Tamorrion Terry',
+              x == "Tre McKitty" ~ "Tre' McKitty",
+              x == "DâWayne Eskridge" ~ "D'Wayne Eskridge",
+              x == "DâWayne Eskridge" ~ "D'Wayne Eskridge",
+              x == "JaâMarr Chase" ~ "Ja'Marr Chase",
+              x == "DâAnte Smith" ~ "D'Ante Smith",
+              x == "D'Anre Smith" ~ "D'Ante Smith",
+              x == 'Rashad Bateman' ~ 'Rashod Bateman',
+              x == 'J. Owusu-Koramoah' ~ 'Jeremiah Owusu-Koramoah',
+              x == 'Alijah Vera' ~ 'Alijah Vera-Tucker',
+              x == 'Daelen Hayes' ~ 'Daelin Hayes',
+              x == 'Kadarious Toney' ~ 'Kadarius Toney',
+              x == 'Rodarious Williams' ~ 'Rodarius Williams',
+              x == 'Christain Darrisaw' ~ 'Christian Darrisaw',
+              x == 'Christain Barmore' ~ 'Christian Barmore',
+              x == 'Spencer K Brown' ~ 'Spencer Brown',
+              x == 'Spencer K. Brown' ~ 'Spencer Brown',
+              x == 'Benjamin St. Juste' ~ 'Benjamin St-Juste',
+              x == 'Cole Van' ~ 'Cole Van Lanen',
+              x == 'Brady Christiansen' ~ 'Brady Christensen',
+              x == 'Tommy Togai' ~ 'Tommy Togiai',
+              x == 'Pauson Adebo' ~ 'Paulson Adebo',
+              x == "Najee' Harris" ~ 'Najee Harris',
+              x == "Sage Surrat" ~ 'Sage Surratt',
+              x == "Chazz Surrat" ~ 'Chazz Surratt',
+              x == "Dante Smith" ~ "D'Ante Smith",
+              x == "Dwayne Eskridge" ~ "D'Wayne Eskridge",
+              x == 'Elerson G.' ~ "Elerson Smith",
+              x == "Travis Etiennne" ~ "Travis Etienne",
+              x == "Trevon Moehrigh" ~ "Trevon Moehrig",
+              x == 'Elijah Moulden' ~ "Elijah Molden",
+              x == 'Hamseh Nasirildeen' ~ "Hamsah Nasirildeen",
+              x == 'Jovante Williams' ~ "Javonte Williams",
+              x == 'Larry Roundtree' ~ "Larry Rountree",
+              x == 'Alim McNeil' ~ "Alim McNeill",
+              x == 'Ritchie Grant' ~ 'Richie Grant',
+              x == 'Shaun Bayer' ~ 'Shaun Beyer',
+              x == 'Deablo Divine' ~ 'Divine Deablo',
+              x == 'Devine Diablo' ~ 'Divine Deablo',
+              x == 'Torrance Marable' ~ 'C.J. Marable',
+              x == 'Dyani Brown' ~ 'Dyamin Brown',
+              x == 'Gregory Newsome' ~ 'Greg Newsome',
+              x == 'Hamsah Nasirldeen' ~ 'Hamsah Nasirildeen',
+              x == 'Tevin Jenkins' ~ 'Teven Jenkins',
+              x == "ArDarius Washington" ~ "Ar'Darius Washington",
+              x == 'ade Johnson' ~ 'Cade Johnson',
+              x == 'Damar Hamilton' ~ 'Damar Hamlin',
+              x == 'Jalyen Waddle' ~ 'Jaylen Waddle',
+              x == 'Day Tufele' ~ 'Jay Tufele',
+              x == 'Creed Humphery' ~ 'Creed Humphrey',
+              x == 'Kelen Mond' ~ 'Kellen Mond',
+              x == 'Dynami Brown' ~ 'Dyami Brown',
+              x == 'Gregory Rosseeau' ~ 'Gregory Rousseau',
+              x == 'Greg Rousseau' ~ 'Gregory Rousseau',
+              x == 'Terrence Marshall' ~ 'Terrace Marshall',
+              x == 'Jimmy Morissey' ~ 'Jimmy Morrissey',
+              x == 'Hamsah Nasrilideen' ~ 'Hamsah Nasirildeen',
+              x == 'Caleb Fairley' ~ 'Caleb Farley',
+              x == 'Nick Collins' ~ 'Nico Collins',
+              x == 'Olijah Griffin' ~ 'Olaijah Griffin',
+              x == "Ta'Quan Graham" ~ "Ta'Quon Graham",
+              x == 'Ifeatu Melinfonwu' ~ 'Ifeatu Melifonwu',
+              x == 'Carlos âBoogieâ Basham' ~ 'Carlos Basham',
+              x == "Josh Meyers" ~ "Josh Myers",
+              x == 'Barron Browning' ~ 'Baron Browning',
+              x == 'Jeremiah Owusu-Koromoah' ~ 'Jeremiah Owusu-Koramoah',
+              x == 'KaDarius Toney' ~ 'Kadarius Toney',
+              x == 'Chauncy Gholston' ~ 'Chauncey Golston',
+              x == "Jeramiah Owusu-Koramoah" ~ "Jeremiah Owusu-Koramoah",
+              x == "Quichy Roche" ~ "Quincy Roche",
+              x == 'Taven Jenkins' ~ 'Teven Jenkins',
+              x == 'Joseph Owusu-Koramoah' ~ 'Jeremiah Owusu-Koramoah',
+              x == 'Chauncey Holston' ~ 'Chauncey Golston',
+              x == 'Braden Christensen' ~ 'Brady Christensen',
+              x == 'David Mills' ~ 'Davis Mills',
+              x == "Samuel Cooper" ~ 'Sam Cooper',
+              x == 'Sam Ehllinger' ~ 'Sam Ehlinger',
+              x == 'Deommodore Lenior' ~ 'Deommodore Lenoir',
+              x == 'Malcom Koonce' ~ 'Malcolm Koonce',
+              x == 'Alijah-Vera Tucker' ~ 'Alijah Vera-Tucker',
+              x == 'Maliik Herring' ~ 'Malik Herring',
+              x == "Taron Jackson" ~ 'Tarron Jackson',
+              x == 'Jay Trufele' ~ 'Jay Tufele',
+              x == 'Justin Hillard' ~ 'Justin Hilliard',
+              x == 'Travis Eitienne' ~ 'Travis Etienne',
+              x == "Quinn Meiner" ~ 'Quinn Meinerz',
+              x == "Quincey Roche" ~ "Quincy Roche",
+              x == "Chancey Gholston" ~ 'Chauncey Golston',
+              x == 'D.J. Daniels' ~ 'D.J. Daniel',
+              x == 'Neill Farrell' ~ 'Neil Farrell',
+              x == 'Najee Davis' ~ 'Najee Harris',
+              x == 'Tariq Bracy' ~ 'TaRiq Bracy',
+              x == 'Jack Curhan' ~ 'Jake Curhan',
+              x == "Ja'Maine Martin" ~ 'Jah-Maine Martin',
+              x == 'Ramaud Bowman' ~ 'Ramaud Chiaokhiao-Bowman',
+              x == "Jayson Owen" ~ "Odafe Oweh",
+              x == 'RaShawn Slater' ~ 'Rashawn Slater',
+              x == 'JaVonte Williams' ~ 'Javonte Williams',
+              x == 'Jaylor Moore' ~ 'Jaylon Moore',
+              x == "Ja'marr Chase" ~ "Ja'Marr Chase",
+              x == "Peter Werner" ~ "Pete Werner",
+              x == 'Calos Basham' ~ 'Carlos Basham',
+              x == "Michael Manet" ~ "Michal Menet",
+              x == 'Ishmir Smith-Marsette' ~ 'Ihmir Smith-Marsette',
+              x == 'Zech McPherson' ~ 'Zech McPhearson',
+              x == 'Taquan Graham' ~ "Ta'Quon Graham",
+              x == 'Asante Sameul' ~ 'Asante Samuel',
+              x == 'Jason Oweh' ~ 'Odafe Oweh',
+              # x == 'Amani Rodgers' ~ 'Amari Rodgers',
+              x == 'Nahjee Harris' ~ 'Najee Harris',
+              x == 'Tyler Gillespie' ~ 'Tyree Gillespie',
+              x == 'Zavon Collins' ~ 'Zaven Collins',
+              x == 'Robert Rochelle' ~ 'Robert Rochell',
+              x == 'Kenny Yeobah' ~ 'Kenny Yeboah',
+              x == "Alizah Vera-Tucker" ~ "Alijah Vera-Tucker",
+              x == 'Jordan Scott' ~ 'Jordon Scott',
+              x == 'Jemar Jefferson' ~ 'Jermar Jefferson',
+              x == 'Pat Surtain' ~ 'Patrick Surtain',
+              x == 'Pat Jones' ~ "Patrick Jones",
+              x == 'Jatarvious Whitlow' ~ "JaTarvious Whitlow",
+              x == 'Will Bradley-King' ~ 'William Bradley-King',
+              x == 'Will Sherman' ~ 'William Sherman',
+              TRUE ~ x
+            ),
+            ifelse(
+              year == 2018,
+              case_when(
+                x == 'Ogbo Okoronkwo' ~ 'Ogbonnia Okoronkwo',
+                x == 'Joe Noteboom' ~ "Joseph Noteboom",
+                TRUE ~ x
+              ),
+              ifelse(
+                year == 2019,
+                case_when(
+                  x == 'C.J. Gardner-Johnson' ~ 'Chauncey Gardner-Johnson',
+                  x == 'David Sills V' ~ "David Sills",
+                  x == 'Olisaemeka Udoh' ~ "Oli Udoh",
+                  TRUE ~ x
+                ),
+                ifelse(
+                  year == 2020,
+                  case_when(
+                    x == 'Mike Danna' ~ 'Michael Danna',
+                    x == "La'Darius Hamilton" ~ "LaDarius Hamilton",
+                    x == 'Gabe Davis' ~ 'Gabriel Davis',
+                    x == "Mike Onwenu" ~ "Michael Onwenu",
+                    x == "Bopete Keyes" ~ "Thakarius Keyes",
+                    x == 'Pat Jones' ~ "Patrick Jones",
+                    x == 'Trystan Colon' ~ 'Trystan Colon-Castillo',
+                    TRUE ~ x
+                  ),
+                  x
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+name_clean <- function(x, draft_year = 2024){
+  name_match(name_fix(x), year = draft_year)
+}
+
+name_special <- function(name, school) {
+  case_when(
+    name == 'David Long' & school == 'Michigan' ~ 'David Long (MICH)',
+    name == 'David Long' &
+      school == 'West Virginia' ~ 'David Long (WVU)',
+    name == 'Jonah Williams' &
+      school == 'Weber State' ~ 'Jonah Williams (WEB)',
+    name == 'Jordan Thomas' &
+      school == 'Oklahoma' ~ 'Jordan Thomas (OU)',
+    name == 'Jordan Thomas' &
+      school == 'Mississippi State' ~ 'Jordan Thomas (MSU)',
+    name == 'Josh Allen' & school == 'Kentucky' ~ 'Josh Allen (UK)',
+    name == 'Josh Allen' & school == 'Temple' ~ 'Josh Allen (TEM)',
+    name == 'David Long' &
+      school == 'Michigan Wolverines' ~ 'David Long (MICH)',
+    name == 'David Long' &
+      school == 'West Virginia Mountaineers' ~ 'David Long (WVU)',
+    name == 'Trenton Thompson' &
+      school == 'San Diego State' ~ 'Trenton Thompson (SDSU)',
+    name == 'Josh Allen' &
+      school == 'Kentucky Wildcats' ~ 'Josh Allen (UK)',
+    name == 'Drake Jackson' &
+      school == 'Kentucky Wildcats' ~ 'Drake Jackson (UK)',
+    name == 'Lamar Jackson' &
+      school == 'Nebraska' ~ 'Lamar Jackson (NEB)',
+    name == 'Spencer Brown' &
+      school == 'UAB' ~ 'Spencer Brown (UAB)',
+    name == 'Tony Brown' &
+      school == 'Colorado' ~ 'Tony Brown (COL)',
+    name == 'Tony Adams' &
+      school == 'Illinois' ~ 'Tony Adams (IL)',
+    name == 'Michael Carter' &
+      school == 'Duke' ~ 'Michael Carter (DUKE)',
+    name == 'Brandon Smith' &
+      school == 'Iowa' ~ 'Brandon Smith (IOWA)',
+    name == 'Brandon Smith' &
+      school == 'Old Dominion' ~ 'Brandon Smith (ODU)',
+    name == 'Sam Williams' &
+      school == 'East Texas Baptist' ~ 'Sam Williams (ETB)',
+    name == 'Drake Jackson' &
+      school == 'Kentucky' ~ 'Drake Jackson (UK)',
+    name == 'Drake Jackson' &
+      school == 'Kentucky Wildcats' ~ 'Drake Jackson (UK)',
+    name == 'Tyler Johnson' &
+      school == 'Arizona State' ~ 'Tyler Johnson (ASU)',
+    name == 'Isaiah Thomas' &
+      school == 'UC Davis' ~ 'Isaiah Thomas (UCD)',
+    name == 'Tyler Davis' &
+      school == 'Georgia Tech' ~ 'Tyler Davis (GT)',
+    name == 'Mike Jones' & school == 'Temple' ~ 'Mike Jones (TEM)',
+    name == 'Josh Johnson' &
+      school == 'Louisiana Monroe' ~ 'Josh Johnson (ULM)',
+    name == 'Myles Murphy' &
+      school == 'North Carolina' ~ 'Myles Murphy (UNC)',
+    name == 'Kevin Harris' &
+      school == 'Georgia Tech' ~ 'Kevin Harris (GT)',
+    name == 'Jaylon Jones' &
+      school == 'Ole Miss' ~ 'Jaylon Jones (MISS)',
+    name == 'Anthony Johnson' &
+      school == 'Iowa State' ~ 'Anthony Johnson (ISU)',
+    name == 'Anthony Johnson' &
+      school == 'Virginia' ~ 'Anthony Johnson (UVA)',
+    name == 'Anthony Johnson' &
+      school == 'LSU' ~ 'Anthony Johnson (LSU)',
+    name == 'Cameron Smith' & school == 'South Carolina' ~ 'Cam Smith',
+    name == 'Kyle Phillips' & school == 'UCLA' ~ 'Kyle Philips',
+    name == 'Cameron Brown' & school == 'Penn State' ~ 'Cam Brown',
+    name == 'Andre Carter' & school %in% c('Indiana', 'Western Michigan') ~ 'Andre Carter (IU)',
+    name == 'Andre Carter' & school == 'Army' ~ 'Andre Carter',
+    name == 'Byron Young' & school == 'Alabama' ~ 'Byron Young',
+    name == 'Byron Young' & school == 'Tennessee' ~ 'Byron Young (TEN)',
+    name == 'Jordan Davis' & school == 'Georgia' ~ 'Jordan Davis',
+    name == 'Jordan Davis' & school == 'Mississippi State' ~ 'Jordan Davis (MSU)',
+    name == 'Tre Williams' & school == 'Auburn' ~ 'Tre Williams (AUB)',
+    name == "Tre' Williams" & school == 'Auburn' ~ 'Tre Williams (AUB)',
+    name == 'Tre Williams' & school == 'Arkansas' ~ 'Tre Williams',
+    name == 'Tony Grimes' & school == 'Texas A&M' ~ 'Tony Grimes',
+    name == 'Tony Grimes' & school == 'Akron' ~ 'Tony Grimes (AKR)',
+    name == 'Dakota Allen' & school == 'Eastern Kentucky' ~ 'Dakota Allen (EKU)',
+    name == 'Dakota Allen' & school == 'Texas Tech' ~ 'Dakota Allen',
+    name == 'Isaiah Johnson' & school == 'Houston' ~ 'Isaiah Johnson',
+    name == 'Isaiah Johnson' & school == 'Syracuse' ~ 'Isaiah Johnson (SYR)',
+    name == 'Jordan Jones' & school == 'Kentucky' ~ 'Jordan Jones (UK)',
+    name == 'Jordan Jones' & school == 'Rhode Island' ~ 'Jordan Jones (RI)',
+    name == 'Caleb Johnson' & school == 'Miami' ~ 'Caleb Johnson (UM)',
+    name == 'Caleb Johnson' & school == 'Texas State' ~ 'Caleb Johnson (TSU)',
+    name == 'Caleb Johnson' & school == 'Notre Dame' ~ 'Caleb Johnson (ND)',
+    name == "Steven Jones" & school == 'Oregon' ~ 'Steven Jones (ORE)',
+    name == 'Steven Jones' & school == 'Appalachian State' ~ 'Steven Jones (APPST)',
+    name == 'Chris Smith' & school == 'Georgia' ~ 'Christopher Smith',
+    name == 'Chris Smith' & school == 'Louisiana' ~ 'Chris Smith',
+    name == 'Leonard Taylor' & school == 'Cincinnati' ~ 'Leonard Taylor (CIN)',
+    name == 'Byron Murphy' & school == 'Texas' ~ 'Byron Murphy (TX)',
+    name == 'James Williams' & school == 'Washington State' ~ 'James Williams (WSU)',
+    name == 'James Williams' & school == 'Miami' ~ 'James Williams (MIA)',
+    name == 'Jalen Green' & school == 'James Madison' ~ 'Jalen Green (JMU)',
+    name == 'Marcus Harris' & school == 'Auburn' ~ 'Marcus Harris',
+    name == 'Marcus Harris' & school %in% c("Idaho", "California") ~ 'Marcus Harris (CAL)',
+    TRUE ~ name
+  )
+}
+
+school_clean <- function(x) {
+  x <- stringi::stri_trans_general(x, "Latin-ASCII")
+  
+  case_when(
+    x == '49ers' ~ 'Charlotte',
+    x %in% c("Ala-Birmingham") ~ 'UAB',
+    x == 'British Columbia (Canada)' ~ 'British Columbia',
+    x == 'UC-Davis' ~ 'UC Davis',
+    x %in% c('UConn', 'CONN', 'UCONN') ~ 'Connecticut',
+    x %in% c('Southern California', 'Southern Cal', 'Usc') ~ 'USC',
+    x %in% c('Cal') ~ 'California',
+    x == 'ECU' ~ 'East Carolina',
+    x %in% c("ASU", "Arizona St") ~ 'Arizona State',
+    grepl("Ga[.]", x) ~ gsub("Ga[.]", "Georgia", x),
+    x == 'UGA' ~ 'Georgia',
+    x == 'Adams State' ~ 'Adams St.',
+    x == 'Angelo State' ~ 'Angelo St.',
+    x == 'Fayetteville State' ~ 'Fayetteville St.',
+    x == 'Pittsburg State' ~ 'Pittsburg St.',
+    x == 'Fort Hays State' ~ 'Fort Hays St.',
+    x == "Michigan St" ~ 'Michigan State',
+    x == "Saint John's (MN)" ~ "Saint John's",
+    x == "Charleston (WV)" ~ "Charleston",
+    x == "Mississippi St" ~ 'Mississippi State',
+    x == 'SC State' ~ 'South Carolina State',
+    x %in% c('UNC', 'Unc') ~ 'North Carolina',
+    x %in% c('NDSU', "N Dakota State", "N. Dakota State") ~ 'North Dakota State',
+    x == 'App State' ~ 'Appalachian State',
+    x %in% c("PITT", 'Pitt', 'Pittsbugh') ~ 'Pittsburgh',
+    x %in% c("FSU", "Florida St", 'Florida St.', 'Fsu') ~ 'Florida State',
+    x %in% c("KSU", "Kansas St", 'Kansas St.', 'Ksu') ~ 'Kansas State',
+    x %in% c("PSU", "Penn St", 'Penn St.', 'Penn', 'Psu') ~ 'Penn State',
+    x %in% c('UL Lafayette', 'Lousiana', "ULL") ~ 'Louisiana',
+    x %in% c(
+      'UL Monroe',
+      "ULM",
+      "La-Monroe",
+      "UL-Monroe",
+      "Louisiana-Monroe"
+    ) ~ 'Louisiana Monroe',
+    x %in% c('Louisiana State', 'Louisiana St', 'Louisiana St.') ~  'LSU',
+    x %in% c('MTSU', 'Middle Tennessee State') ~  'Middle Tennessee',
+    grepl("UW-", x) ~ sub("UW-", "Wisconsin-", x),
+    grepl("Flordia", x) ~ gsub("Flordia", "Florida", x),
+    x %in% c('Texas Christian', 'Texas Christian University') ~ 'TCU',
+    x %in% c("Vandy") ~ 'Vanderbilt',
+    x == 'Mississippi' ~ 'Ole Miss',
+    x == 'Central Florida' ~ 'UCF',
+    x == 'Brigham Young' ~ 'BYU',
+    x == 'Penn' ~ 'Pennsylvania',
+    x %in% c('Ohio St', 'Ohio St.', 'OSU', 'Osu') ~ 'Ohio State',
+    x %in% c('Boise St', 'Boise St.') ~ 'Boise State',
+    x %in% c(
+      'North Carolina State',
+      'North Carolina St.',
+      'North Carolina St'
+    ) ~ 'NC State',
+    x == 'S.F. Austin' ~ 'Stephen F. Austin',
+    x %in% c('VA Tech', 'VaTech', 'VT', 'VTech') ~ 'Virginia Tech',
+    x %in% c("LA Tech", "Lousiana Tech") ~ 'Lousiana Tech',
+    x == 'Marshal' ~ 'Marshall',
+    x %in% c('Concordia- Minnesota', 'Concordia') ~ 'Concordia-St. Paul',
+    grepl("San Jos", x) ~ "San Jose State",
+    x %in% c("C. Michigan") ~ 'Central Michigan',
+    x %in% c('Ucla') ~ 'UCLA',
+    x %in% c(
+      'Middle Tennessee State',
+      'Middle Tenn. State',
+      'Middle Tenn. St.'
+    ) ~ 'Middle Tennessee',
+    x == 'Texas-El Paso' ~ 'UTEP',
+    x == "Hawaii" ~ "Hawai'i",
+    x == "Massachusetts" ~ "UMass",
+    x %in% c('Texas-San Antonio', 'UT San Antonio') ~ 'UTSA',
+    x == 'Southern Mississippi' ~ 'Southern Miss',
+    x %in% c('SE Missouri State', 'SE Missouri St.') ~ 'Southeast Missouri State',
+    x %in% c("E. Carolina") ~ 'East Carolina',
+    x %in% c("FAU", 'Fau') ~ 'Florida Atlantic',
+    x %in% c("N Iowa", "N. Iowa", "N Iowa") ~ "Northern Iowa",
+    grepl("East[.]", x)  ~ sub("East[.]", "Eastern", x),
+    grepl("E[.]", x)  ~ sub("E[.]", "Eastern", x),
+    grepl("S[.]", x)  ~ sub("S[.]", "South", x),
+    grepl("West[.]", x) ~ sub("West[.]", "Western", x),
+    grepl("W[.]", x) ~ sub("W[.]", "Western", x),
+    
+    grepl("C[.]", x) ~ sub("C[.]", "Central", x),
+    grepl("N[.]", x) ~ sub("N[.]", "Northern", x),
+    grepl("N ", x) ~ sub("N ", "Northern", x),
+    x %in% c("NC-A&T", "North Carolina A & T") ~ 'North Carolina A&T',
+    x %in% c("NC Central") ~ 'North Carolina Central',
+    grepl("Col[.]", x) ~ sub("Col[.]", "College", x),
+    x == 'Miami (OH)' ~ x,
+    x == 'Miami (FL)' ~ 'Miami',
+    grepl("Miami", x) ~ "Miami",
+    x %in% c("Texas A&m") ~ "Texas A&M",
+    grepl("A & M", x) ~ gsub("A & M", "A&M", x),
+    grepl("Int[.]", x) ~ gsub("Int.", "International", x),
+    x %in% c("Flordia Int", 'FIU') ~ 'Florida International',
+    x %in% c("Grambling State") ~ 'Grambling',
+    x == 'Angelo State' ~ "Angelo St.",
+    x == 'Bowie State' ~ 'Bowie St.',
+    x == 'Bryant University' ~ 'Bryant',
+    x == 'Carson - Newman' ~ 'Carson-Newman',
+    x == 'East Central (Ok.)' ~ 'East Central',
+    x == 'Elizabeth City State' ~ "Elizabeth City St.",
+    x == 'Fort Valley State' ~ 'Fort Valley St.',
+    x == 'Lenoir - Rhyne' ~ 'Lenoir-Rhyne',
+    x == 'Lincoln (Mo.)' ~ 'Lincoln (MO)',
+    x == 'Lincoln (Pa)' ~ 'Lincoln (PA)',
+    x == 'LIU' ~ 'Long Island University',
+    x %in% c('Lsu') ~ 'LSU',
+    x == 'McNeese State' ~ 'McNeese',
+    x == 'Midwestern State' ~ 'Midwestern St.',
+    x == 'Missouri Western State' ~ 'Missouri Western',
+    x == 'Nicholls State' ~ 'Nicholls',
+    x == 'Northeastern State (Ok.)' ~ 'Northeastern St.',
+    x == 'Pittsburg State' ~ 'Pittsburg St.',
+    x == 'Southern University' ~ "Southern",
+    x == "St. Augustine's" ~ "Saint Augustine's",
+    x == "St. Johns, Minnesota" ~ 'St. Johns (MN)',
+    x == 'Tennessee-Martin' ~ 'UT Martin',
+    x == 'Texas - Permian Basin' ~ 'Tex. Permian Basin',
+    x == 'Texas A&M-Kingsville' ~ 'Tex. A&M-Kingsville',
+    x == "Tusculum (Tn.)" ~ "Tusculum",
+    x == "Hawai'i" ~ 'Hawaii',
+    x == "UFTL" ~ 'Fort Lauderdale',
+    x == 'USF' ~ 'South Florida',
+    x == 'UVA Wise' ~ 'UVa-Wise',
+    x == 'Virginia Military Institute' ~ 'VMI',
+    x == 'West Virginia State' ~ 'West Virginia St.',
+    x == 'West Georgia' ~ 'West Ga.',
+    x %in% c('UVA', 'Uva') ~ 'Virginia',
+    x == 'West Virginia Wesleyan' ~ 'West Va. Wesleyan',
+    x == 'Wheaton' ~ 'Wheaton (Ill.)',
+    x == 'Winston - Salem State' ~ 'Winston Salem',
+    x == "Wisconsin - Stout" ~ 'UW-Stout',
+    x %in% c("Wisconsin - Whitewater", "Wisconsin-Whitewater") ~ 'UW-Whitewater',
+    grepl("St[.] ", x) ~ x,
+    grepl("St[.]", x) ~ sub("St[.]", "State", x),
+    x == 'Oregoon State' ~ 'Oregon State',
+    TRUE ~ x
+  )
+}
+
+position_clean <- function(x) {
+  case_when(
+    x %in% c('Quarterback', 'QB') ~ 'QB',
+    x %in% c("Wide Receiver", "WIDE RECEIVER") | grepl("WR", x) ~ 'WR',
+    x %in% c('Running Back', 'HB', 'TB') | grepl("RB", x) ~ 'RB',
+    x %in% c("TE/FB") ~ 'FB',
+    x %in% c(
+      "OG",
+      'G',
+      'Offensive Guard',
+      'Guard',
+      'G/OC',
+      'OG/C',
+      'OG/OC',
+      'iOL',
+      'IOL',
+      'OL',
+      "Offensive Lineman",
+      'RG',
+      'LG',
+      'Offensive Line',
+      'OG/OT'
+    ) ~ 'G',
+    x %in% c("OC",
+             'C',
+             'Offensive Center',
+             'Center',
+             'C/G',
+             'OC/OG',
+             'C/OG') ~ 'C',
+    x %in% c(
+      "OT",
+      'T',
+      'Tackle',
+      'Offensive Tackle',
+      "OT/G",
+      "OT/OG",
+      "OT/G/C",
+      "LT",
+      "RT",
+      "Lanen OT"
+    ) ~ 'OT',
+    x %in% c("TE", "Tight End") ~ 'TE',
+    x %in% c(
+      "DE",
+      'ED',
+      'EDGE',
+      'Edge',
+      "3-4DE",
+      'DL/EDGE',
+      "RDE",
+      "D. End",
+      "LDE",
+      "LE",
+      'RE',
+      "EDGE/Defensive Line",
+      "DE/DT",
+      "DE/OLB",
+      "OLB",
+      "EDGE/OLB",
+      'Edge/LB',
+      "LB/EDGE",
+      "OLB/EDGE",
+      'Defensive End'
+    ) ~ 'EDGE',
+    x %in% c(
+      "DT",
+      'DI',
+      "DL",
+      "NT/DT",
+      'Defensive Line',
+      "Defensive Tackle",
+      "Defensive Lineman",
+      'DL1T',
+      'DL3T',
+      'DL5T',
+      'IDL',
+      'NT',
+      'Nose',
+      "Nose Tackle",
+      "DT/3-4DE",
+      "DT/DE",
+      "RDT",
+      "LDT"
+    ) ~ 'DT',
+    x %in% c(
+      "OLB/ILB",
+      "LB/S",
+      "3-40lb",
+      '3-4OLB',
+      "Outside Linebacker",
+      "Linebacker",
+      "Outside LB",
+      "ROLB",
+      "LOLB",
+      'MLB',
+      "LB/DB",
+      "OLB/SS"
+    ) ~ 'LB',
+    x %in% c(
+      "ILB",
+      "Inside Linebacker",
+      "LILB",
+      "RILB",
+      "RLB",
+      "LLB",
+      "LB",
+      "LB"
+    ) ~ 'LB',
+    x %in% c(
+      "CB",
+      'CBN',
+      "CB/DB",
+      "DB/CB",
+      "Defensive Back",
+      "Cornerback",
+      "DB",
+      "LCB",
+      "RCB"
+    ) ~ 'CB',
+    x %in% c('SS',
+             'Strong Safety',
+             "Safety",
+             'SAFETY',
+             'DS',
+             'S',
+             'SAF') ~ 'S',
+    x %in% c('FS',
+             'Free Safety') ~ 'S',
+    x %in% c('PT',
+             'P',
+             'Punter',
+             'PT/PK') ~ "ST",
+    x %in% c('PK',
+             'K',
+             'Kicker',
+             'PK/PT') ~ "ST",
+    x == 'LS' ~ 'ST',
+    TRUE ~ x
+  )
+}
+
+getMaxDraftYear <- function() {
+  max(date_xwalk$draft_year)
+}
+
+getMinDraftYear <- function() {
+  min(date_xwalk$draft_year)
+}
+
+draft_clean <- function(x, rnd = TRUE, yr = getMaxDraftYear()) {
+  if (rnd == TRUE) {
+    return(
+      x %>%
+        mutate(
+          across(everything(), ~ str_squish(.)),
+          round = round_clean(pick, year = yr),
+          position = position_clean(position),
+          school = school_clean(school),
+          team = sub(" \\(.*", "", team),
+          team = team_clean(team)
+        ) %>%
+        rowwise %>%
+        mutate(
+          name = name_clean(name, draft_year = yr),
+          name = name_special(name, school)
+        ) %>%
+        ungroup
+    )
+  } else {
+    return(
+      x %>%
+        mutate(
+          across(everything(), ~ str_squish(.)),
+          position = position_clean(position),
+          school = school_clean(school),
+          team = sub(" \\(.*", "", team),
+          team = team_clean(team)
+        ) %>%
+        rowwise %>%
+        mutate(
+          name = name_clean(name, draft_year = yr),
+          name = name_special(name, school)
+        ) %>%
+        ungroup
+    )
+  }
+}
+
+clean_draft <- function(x, year = getMaxDraftYear(), select = FALSE) {
+  if (year == 'All') {
+    x %>%
+      left_join(mock_players, by = c('name')) %>%
+      mutate(
+        school = coalesce(sch, school),
+        sch = NULL,
+        position = coalesce(pos, position),
+        pos = NULL
+      ) -> tmp
+  } else {
+    x %>%
+      ungroup %>%
+      # select(-draft_year) %>%
+      left_join(
+        mock_players %>%
+          filter(draft_year %in% year),
+        by = c('name')
+      ) %>%
+      mutate(
+        school = coalesce(sch, school),
+        sch = NULL,
+        position = coalesce(pos, position),
+        pos = NULL
+      ) -> tmp
+  }
+  
+  if (select == FALSE) {
+    return(tmp)
+  } else {
+    return(tmp %>% select(round, pick, name, position, school, team))
+  }
+}

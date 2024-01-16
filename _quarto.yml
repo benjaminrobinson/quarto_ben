@@ -1,0 +1,24 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Thoughts for My Thoughts"
+  navbar:
+    right:
+      - about.qmd
+      - icon: github
+        href: https://github.com/benjaminrobinson/
+      - icon: twitter
+        href: https://twitter.com/benj_robinson/
+      - icon: linkedin
+        href: https://www.linkedin.com/in/benjrobinson2/
+      - icon: filetype-pdf
+        href: "BJR_Resume.pdf"
+format:
+  html:
+    theme: pulse
+    css: styles.css
+
+editor: visual
+

@@ -1,0 +1,34 @@
+---
+title: "About This Blog"
+image: "Benjamin Robinson_19-09-26_2895.jpg"
+about:
+  template: broadside
+  links:
+    - icon: twitter
+      text: Twitter
+      href: https://twitter.com/benj_robinson/
+    - icon: linkedin
+      text: LinkedIn
+      href: https://www.linkedin.com/in/benjrobinson2/
+    - icon: github
+      text: Github
+      href: https://github.com/benjaminrobinson/
+    - icon: spotify
+      text: Spotify
+      href: https://open.spotify.com/user/bjrobinson2/
+    - icon: vinyl
+      text: Discogs
+      href: https://www.discogs.com/user/benjaminrobinson/collection/
+---
+
+Hello and welcome to my blog! Come on in and make yourself comfortable. Can I get you anything? Nothing? Well, then let me tell you a little about myself. I'm `r floor(as.numeric(Sys.Date()-as.Date("1990-09-13"))/365)` years old and have called the Washington, D.C. area home for the past `r floor(as.numeric(Sys.Date()-as.Date("2014-08-21"))/365)` years. I've spent time in Cincinnati (hometown), Pittsburgh (college), Los Angeles (graduate school), and now D.C., where I'm a Manager of Data Strategy & Insights at the [Universal Service Administrative Company](usac.org) focused on business intelligence, open data, and data science software products.
+
+You might know me from my work on [Grinding The Mocks](grindingthemocks.com), my side project that uses mock drafts, the wisdom of crowds, and data science to predict the NFL Draft. I've been fortunate to work with NFL teams, agents, and football analytics companies as a data provider and to have my work featured in [FiveThirtyEight](https://archive.is/GmZ0E), [The New York Times](https://archive.is/1YgGr), and [Football Outsiders](https://archive.is/Ahhdd).
+
+But there's more to me than just sports analytics! In my personal life, I'm passionate about:
+
+-   being Jewish (✡️**and proud of it!)**
+-   being the best uncle to my nephew (**❤️you Judah!**)
+-   eating and making bagels (🥯**of all kinds!**)
+-   playing guitar (**electric and acoustic** 🎸!)
+-   and exploring cities (**on** 🦶,🚋, 🚌, **and in**💻!)
